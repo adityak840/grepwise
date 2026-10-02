@@ -75,6 +75,8 @@ grepwise/
 | Embeddings | `google-genai` SDK | |
 | Tests / lint / types | pytest, ruff, mypy | |
 
+**Virtual environment:** uv creates and manages `backend/.venv/` (gitignored). `backend/.python-version` pins 3.12. Always run commands through `uv run …`; never install packages globally.
+
 **Versions:** use the latest stable release of each at build time. `uv.lock` records the exact versions. Check the current docs for `google-genai` and `tree-sitter-language-pack` before writing code against them, since both change often.
 
 ---
@@ -158,6 +160,8 @@ CREATE TABLE jobs (
 
 **Why `'simple'` for full-text:** the English stemmer mangles code identifiers. M2 will revisit this for docs.
 
+**Later migrations:** `002_embedding_model.sql` adds `chunks.embedding_model` (see 6.5).
+
 **Migration runner:** applies every `migrations/*.sql` file not yet listed in `schema_migrations`, in filename order, each inside a transaction.
 
 ---
@@ -176,6 +180,7 @@ Skip:
 - **Files:** lockfiles (`*.lock`, `package-lock.json`, `pnpm-lock.yaml`, `poetry.lock`, `uv.lock`), minified files (`*.min.js`, `*.min.css`), source maps (`*.map`)
 - **Binary files:** any file with a null byte in its first 8 KB
 - **Large files:** larger than 200 KB
+- **Files with very long lines:** any line over 2,000 characters (almost always data, minified or generated code). This guarantees every chunk fits the size limit.
 
 Keep everything else that is text.
 
@@ -191,7 +196,7 @@ Keep everything else that is text.
 
 - **Size limit:** about 1,500 tokens per chunk (estimate tokens as characters ÷ 4).
 - **Oversized function or method:** split into `window` chunks of up to the size limit, each overlapping the previous one by about 15% of its lines.
-- **Unsupported languages or parse failures:** the fallback splitter makes `window` chunks of 80 lines with 15 lines of overlap.
+- **Unsupported languages or parse failures:** the fallback splitter makes `window` chunks of up to 80 lines (and never over the size limit), with 15 lines of overlap for full-size windows.
 - **Line numbers** are 1-based and inclusive, and must match the original file exactly. This is the most important property of M1.
 - **Symbols** are qualified: `Signer.sign`, not `sign`.
 
@@ -212,7 +217,7 @@ Inside: class Signer
   - `FakeEmbedder`: deterministic vectors derived from the hash. Used in all tests, so **tests never call the network**.
 - **Normalize every vector to length 1** before storing.
 - Batch requests. On rate-limit errors, retry with exponential backoff (up to 5 tries).
-- **Reuse:** if a chunk with the same `content_hash` already exists for this source name (any version), copy its embedding instead of calling Gemini.
+- **Reuse:** if a chunk with the same `content_hash` **and the same embedding model** already exists for this source name (any version), copy its embedding instead of calling Gemini. Each chunk stores `embedding_model` (e.g. `gemini:gemini-embedding-001:768`, or `fake:768`), so switching models never keeps stale vectors.
 
 ### 6.6 Store
 - Upsert the `sources` row; set status `indexing`, then `ready` or `failed` (with the error message).

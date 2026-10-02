@@ -1,0 +1,57 @@
+[project]
+name = "grepwise"
+version = "0.1.0"
+description = "Ask questions about codebases, docs and APIs, with exact citations."
+authors = [
+    { name = "adityak840", email = "khandelwal.aditya840@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "google-genai>=2.27.0",
+    "numpy>=2.5.3",
+    "pgvector>=0.5.0",
+    "psycopg[binary]>=3.3.6",
+    "pydantic-settings>=2.15.0",
+    # 0.26.0 corrupts Node.start_point/end_point after the first read (wrong rows, then
+    # segfaults). Lift this pin only once tests/test_chunkers.py passes on the new version.
+    "tree-sitter>=0.25,<0.26",
+    "tree-sitter-language-pack>=1.20.0",
+    "typer>=0.27.2",
+]
+
+[project.scripts]
+grepwise = "grepwise.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Fixtures are sample input with exact line numbers: never lint or reformat them.
+extend-exclude = ["tests/fixtures"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+exclude = ["tests/fixtures/"]
+
+[[tool.mypy.overrides]]
+module = ["pgvector.*", "tree_sitter_language_pack.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: needs the Docker Postgres from `make db`"]
