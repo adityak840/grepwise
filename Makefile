@@ -4,12 +4,19 @@ unexport VIRTUAL_ENV
 UV := cd backend && uv run
 GRAMMARS := ["python", "javascript", "typescript", "tsx"]
 
-.PHONY: setup db db-down migrate test lint fmt
+.PHONY: setup db db-down migrate test lint fmt ollama serve
 
 setup:  ## Install dependencies, tree-sitter grammars and the local embedding model (network once)
 	cd backend && uv sync
 	$(UV) python -c 'import tree_sitter_language_pack as t; t.download($(GRAMMARS))'
 	$(UV) python -c 'from grepwise.config import get_settings as g; from grepwise.ingest.embed import LocalEmbedder as L; s = g(); L(s.local_embedding_model, cache_dir=s.model_cache_dir).embed_query("warm up")'
+
+ollama:  ## Optional: build the local agent model (qwen3.5:9b with a 16k context) for --provider ollama
+	ollama pull qwen3.5:9b
+	ollama create grepwise-qwen3.5 -f backend/ollama/Modelfile
+
+serve: db  ## Run the HTTP API on :8000
+	$(UV) grepwise serve
 
 db:  ## Start local Postgres + pgvector and wait until it is healthy
 	docker compose up -d --wait

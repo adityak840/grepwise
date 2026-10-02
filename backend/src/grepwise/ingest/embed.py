@@ -189,6 +189,10 @@ class LocalEmbedder(Embedder):
         return model
 
     @property
+    def loaded(self) -> bool:
+        return self._model is not None
+
+    @property
     def model(self) -> LocalModel:
         if self._model is None:
             self._model = self._factory()

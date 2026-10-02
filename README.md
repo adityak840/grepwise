@@ -2,7 +2,7 @@
 
 Ask questions about any codebase, library docs or API, and get answers with exact, verifiable citations. Use it in the browser, or plug it into Claude Code / Cursor as an MCP server.
 
-**Status:** M3 (tool layer and citation checking) built. See [docs/spec/00-overview.md](docs/spec/00-overview.md) for the plan.
+**Status:** M4 (agent, streaming answers, checked citations) built. See [docs/spec/00-overview.md](docs/spec/00-overview.md) for the plan.
 
 ## Local setup
 
@@ -45,6 +45,20 @@ uv run grepwise endpoint "GET /pet/42" --source petstore  # get_endpoint
 uv run grepwise verify "petstore@1.0.27:GET /pet/{petId}:L1-L27"
 uv run grepwise tool search '{"query": "required option", "limit": 3}'  # raw JSON, as an agent sees it
 ```
+
+### Ask
+
+The agent answers in plain language, calling the tools itself, and checks every citation:
+
+```bash
+uv run grepwise ask "How do I make an option required in Typer?"
+uv run grepwise ask "How does TimestampSigner check expiry?" --provider ollama   # offline
+uv run grepwise runs                       # recent runs: steps, grounded, tokens, time
+uv run grepwise serve                      # POST /chat (SSE) and GET /health on :8000
+```
+
+For `--provider ollama`, run `make ollama` once: it builds `grepwise-qwen3.5`, qwen3.5:9b with
+a 16k context (Ollama's 4k default silently cuts off agent prompts).
 
 ## Development
 

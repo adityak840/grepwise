@@ -1,0 +1,5 @@
+# qwen3.5:9b with a 16k-token context. Ollama's default (4,096) silently drops the start of
+# longer prompts, which loses the system prompt once tool results arrive.
+# Build with `make ollama`; the agent's Ollama default model is grepwise-qwen3.5.
+FROM qwen3.5:9b
+PARAMETER num_ctx 16384

@@ -123,6 +123,10 @@ FastAPI endpoint `POST /chat`:
 
 The LLM provider is behind one interface (OpenAI-compatible), so switching from Gemini to Groq, OpenRouter, OpenAI or Claude is a config change.
 
+**Local-first:** with `LLM_PROVIDER=ollama`, the agent runs on a local model, and since embeddings are already local, **the whole pipeline works offline** and code never leaves the machine. The hosted demo uses Gemini's free tier (`gemini-3.5-flash-lite`). M6's evals compare the two.
+
+**Citations must be real and seen:** every citation is checked against the stored file (`verify_citation`) **and** must overlap text a tool actually returned in that run; anything else is dropped. Details in [04-agent.md](04-agent.md).
+
 ### 3.6 MCP server
 - Exposes the same 5 tools, plus each indexed source as a resource.
 - **Makes no LLM calls.** The client's model does the reasoning.
@@ -181,7 +185,7 @@ User pastes URL → API creates source + job → triggers GitHub Actions
 | Backend | Python, FastAPI, Pydantic, uv (package manager) |
 | Parsing | tree-sitter, Markdown parser, OpenAPI loader |
 | Database | PostgreSQL + pgvector (Neon) |
-| LLM | Gemini Flash (tool calling + structured outputs) |
+| LLM | `gemini-3.5-flash-lite` (free tier) or a local model via Ollama (`grepwise-qwen3.5`, a 16k-context build of `qwen3.5:9b`). OpenAI-compatible client, tool calling |
 | Embeddings | `nomic-embed-text-v1.5` (quantized), run locally with fastembed (ONNX, CPU), 768 dims. Gemini embeddings remain an option (`EMBEDDER=gemini`) but the free tier caps at about 1,000 chunks a day |
 | MCP | Official Python MCP SDK |
 | Frontend | Next.js, TypeScript, Tailwind, shadcn/ui |
@@ -198,10 +202,12 @@ User pastes URL → API creates source + job → triggers GitHub Actions
 | API + remote MCP | Render (free web service) | Sleeps after 15 min idle; the UI shows "waking up" and warms it on page load |
 | Database | Neon (free) | 0.5 GB, never pauses |
 | Indexing worker | GitHub Actions | Free for public repos |
-| LLM | Gemini API (free tier) | For the agent only. Rate-limit visitors; optional "use your own key" |
+| LLM | Gemini API (free tier, `gemini-3.5-flash-lite`) | For the agent only. A shared daily cap for the whole site, small per-visitor limits, at most 5 agent steps per question, and an optional "use your own Gemini key" field (used for that request only, never stored) |
 | Query embeddings | The local model, inside the API on Render | About 290 MB of memory and 12 ms per question; fits the 512 MB free instance |
 
-**Guardrails:** public repos only, a repo size limit, per-visitor rate limiting, read-only tools by default.
+**Guardrails:** public repos only, a repo size limit, per-visitor and shared daily limits, read-only tools by default.
+
+**Free-tier reality:** Gemini's free allowance is small (`gemini-3.8-flash`: 20 requests a day; flash-lite has its own, larger allowance). So the live site is a bonus: **the README's demo video and eval numbers are the main showcase**, and when the shared cap is reached the site says so and offers the "use your own key" option. Other OpenAI-compatible free providers (e.g. Groq) can be tried in M6 by changing settings.
 **Secrets:** the Gemini key lives in a local `.env` file (never committed) and in Render's environment settings.
 
 ---

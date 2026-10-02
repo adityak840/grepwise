@@ -14,6 +14,9 @@ from pydantic import BaseModel, ValidationError
 from rich.console import Console
 from rich.table import Table
 
+from grepwise.agent.llm import make_llm
+from grepwise.agent.loop import run_agent
+from grepwise.agent.runs import recent_runs
 from grepwise.config import get_settings
 from grepwise.db.connection import connect
 from grepwise.db.migrate import migrate
@@ -328,3 +331,102 @@ def tool(
     with _tools() as ctx:
         result = call_tool(ctx, name, parsed)
     typer.echo(serialize(result))
+
+
+# --- Agent (M4) --------------------------------------------------------------------------
+
+
+class Provider(StrEnum):
+    gemini = "gemini"
+    ollama = "ollama"
+
+
+_STATUS_TEXT = {
+    "not_found": "not found in the indexed sources",
+    "bad_range": "line range is past the end of the file",
+    "unseen": "real, but no tool showed it to the agent",
+}
+
+
+@app.command()
+def ask(
+    question: Annotated[str, typer.Argument(help="Your question, in plain language")],
+    source: Annotated[
+        list[str] | None, typer.Option("--source", help="Only use these sources (repeatable)")
+    ] = None,
+    provider: Annotated[
+        Provider | None, typer.Option("--provider", help="Override LLM_PROVIDER")
+    ] = None,
+    quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Hide the tool steps")] = False,
+) -> None:
+    """Ask the agent a question; it calls tools, streams an answer, and checks citations."""
+    settings = get_settings()
+    llm = make_llm(settings.llm(provider.value if provider else None))
+    failed = False
+    with _tools() as ctx:
+        for ev in run_agent(ctx, llm, question, sources=source):
+            data = ev.data
+            if ev.type == "step" and not quiet:
+                args = json.dumps(data["args"], ensure_ascii=False)
+                console.print(f"→ {data['tool']} {args}", style="cyan", markup=False)
+            elif ev.type == "tool_result" and not quiet:
+                style = "dim" if data["ok"] else "yellow"
+                console.print(f"  {data['summary']}", style=style, markup=False)
+            elif ev.type == "token":
+                typer.echo(data["text"], nl=False)
+            elif ev.type == "reset":
+                typer.echo()
+                console.print("(draft discarded: the agent is looking something up)", style="dim")
+            elif ev.type == "citations":
+                typer.echo()
+                if data:
+                    console.print("\nCitations", style="bold")
+                for c in data:
+                    if c["status"] == "verified":
+                        console.print(f"  ✓ {c['citation']}", style="green", markup=False)
+                    else:
+                        reason = _STATUS_TEXT.get(c["status"], c["status"])
+                        console.print(f"  ✗ {c['citation']}: {reason}", style="red", markup=False)
+            elif ev.type == "done":
+                grounded = "" if data["grounded"] else " · not grounded: no verified citations"
+                console.print(
+                    f"\n{data['steps']} tool calls · {data['input_tokens']:,} in / "
+                    f"{data['output_tokens']:,} out tokens · {data['seconds']:.1f}s · "
+                    f"{data['provider']}/{data['model']}{grounded}",
+                    style="dim",
+                    markup=False,
+                )
+            elif ev.type == "error":
+                failed = True
+                console.print(f"\n{data['code']}: {data['message']}", style="red", markup=False)
+    if failed:
+        raise typer.Exit(1)
+
+
+@app.command()
+def serve(
+    port: Annotated[int, typer.Option("--port")] = 8000,
+    host: Annotated[str, typer.Option("--host")] = "127.0.0.1",
+) -> None:
+    """Run the HTTP API (POST /chat streams answers over SSE; GET /health)."""
+    import uvicorn
+
+    from grepwise.api.app import create_app
+
+    uvicorn.run(create_app(), host=host, port=port)
+
+
+@app.command()
+def runs(limit: Annotated[int, typer.Option("--limit", min=1, max=200)] = 10) -> None:
+    """Show recent agent runs."""
+    with connect() as conn:
+        rows = recent_runs(conn, limit)
+    table = Table("id", "when", "question", "steps", "grounded", "tokens in/out", "time", "error")
+    for r in rows:
+        grounded = {True: "yes", False: "no", None: "-"}[r["grounded"]]
+        table.add_row(
+            str(r["id"]), r["created_at"].strftime("%m-%d %H:%M"), r["question"][:60],
+            str(r["steps"]), grounded, f"{r['input_tokens'] or 0:,}/{r['output_tokens'] or 0:,}",
+            f"{r['seconds'] or 0:.1f}s", r["error"] or "",
+        )  # fmt: skip
+    console.print(table)
