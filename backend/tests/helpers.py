@@ -9,6 +9,9 @@ import psycopg
 from grepwise.ingest.fetch import Checkout
 
 FIXTURES = Path(__file__).parent / "fixtures"
+REPO_URL = "https://github.com/example/mini_repo"
+DOCS_URL = "https://github.com/example/docs_repo"
+PETSTORE = str(FIXTURES / "openapi" / "petstore.json")
 
 
 def fake_fetcher(

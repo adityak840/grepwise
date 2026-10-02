@@ -51,7 +51,7 @@ grepwise/
 │   │       │   ├── code.py   # tree-sitter splitter
 │   │       │   └── fallback.py  # line windows for unsupported languages
 │   │       ├── enrich.py     # context header + hash
-│   │       ├── embed.py      # Embedder interface, Gemini + Fake
+│   │       ├── embed.py      # Embedder interface: Local, Gemini, Fake
 │   │       ├── store.py      # write sources/documents/chunks
 │   │       └── pipeline.py   # runs the steps in order
 │   └── tests/
@@ -212,12 +212,14 @@ Inside: class Signer
 `content_hash` = sha256 of header + content.
 
 ### 6.5 Embed
-- An `Embedder` interface with two implementations:
-  - `GeminiEmbedder`: model from settings (default `gemini-embedding-001`), `output_dimensionality=768`, task type `RETRIEVAL_DOCUMENT`.
+- An `Embedder` interface with three implementations:
+  - `LocalEmbedder` (**default**, `EMBEDDER=local`): `nomic-ai/nomic-embed-text-v1.5-Q` via fastembed, run on the CPU, no quota. Adds the model's task prefixes (`search_document: ` / `search_query: `). Texts are sorted by length and grouped up to 16 at a time **and** about 1,000 estimated tokens per group, because memory grows with the square of input length and a group is padded to its longest text (measured: 1.9 GB peak, against 8+ GB with larger groups). The model (about 130 MB) downloads once, in `make setup`, to `~/.cache/grepwise/fastembed`.
+  - `GeminiEmbedder` (`EMBEDDER=gemini`): model from settings (default `gemini-embedding-001`), `output_dimensionality=768`, task type `RETRIEVAL_DOCUMENT`. Note: the free tier counts **each text** as a request (about 100 a minute and 1,000 a day).
   - `FakeEmbedder`: deterministic vectors derived from the hash. Used in all tests, so **tests never call the network**.
 - **Normalize every vector to length 1** before storing.
 - Batch requests. On rate-limit errors, retry with exponential backoff (up to 5 tries).
-- **Reuse:** if a chunk with the same `content_hash` **and the same embedding model** already exists for this source name (any version), copy its embedding instead of calling Gemini. Each chunk stores `embedding_model` (e.g. `gemini:gemini-embedding-001:768`, or `fake:768`), so switching models never keeps stale vectors.
+- **Reuse:** every embedding is saved in `embedding_cache`, keyed by `(model_id, content_hash)` (migration `004_embedding_cache.sql`). Before embedding, the pipeline looks up the cache, so a chunk seen before, in **any** source or version, is never embedded twice by the same model. Each chunk also stores `embedding_model` (e.g. `local:nomic-ai/nomic-embed-text-v1.5-Q:768`, `gemini:gemini-embedding-001:768` or `fake:768`), and search only compares vectors from the same model.
+- **Progress is saved as it goes:** new embeddings are written to the cache after every 64, so a run that fails halfway resumes from where it stopped.
 
 ### 6.6 Store
 - Upsert the `sources` row; set status `indexing`, then `ready` or `failed` (with the error message).
@@ -229,10 +231,11 @@ Inside: class Signer
 
 ```
 DATABASE_URL=postgresql://grepwise:grepwise@localhost:5432/grepwise
-GEMINI_API_KEY=
+GEMINI_API_KEY=          # for the agent (M4) and EMBEDDER=gemini
 EMBEDDING_MODEL=gemini-embedding-001
 EMBEDDING_DIM=768
-EMBEDDER=gemini        # gemini | fake
+EMBEDDER=local         # local | gemini | fake
+LOCAL_EMBEDDING_MODEL=nomic-ai/nomic-embed-text-v1.5-Q
 ```
 
 The real `.env` is gitignored. The key is never logged or printed.
@@ -262,7 +265,7 @@ M1 is done when all of these pass:
 - [ ] `ruff check` and `mypy` pass with no errors.
 
 **Manual**
-- [ ] `grepwise index https://github.com/pallets/itsdangerous --ref 2.2.0` with the real Gemini key finishes, and `stats` shows the source as `ready`.
+- [ ] `grepwise index https://github.com/pallets/itsdangerous --ref 2.2.0` with the local embedder finishes, and `stats` shows the source as `ready`.
 - [ ] Opening 3 random chunks and comparing them with the file on GitHub at that tag shows identical lines.
 - [ ] Running the same command again reports all embeddings reused.
 

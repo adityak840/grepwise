@@ -74,7 +74,7 @@ def parse_sources(sources: Sequence[str] | None) -> tuple[list[str], list[str]] 
     return names, versions
 
 
-_FILTERS = """
+FILTERS_SQL = """
   AND (%(f_names)s::text[] IS NULL OR EXISTS (
         SELECT 1 FROM unnest(%(f_names)s::text[], %(f_versions)s::text[]) AS f(name, version)
         WHERE f.name = s.name AND (f.version = '' OR f.version = s.version)))
@@ -85,7 +85,7 @@ _VECTOR_SQL = f"""
 WITH ranked AS MATERIALIZED (
   SELECT c.id, c.embedding <=> %(q)s AS distance
   FROM chunks c JOIN sources s ON s.id = c.source_id
-  WHERE c.embedding_model = %(model)s {_FILTERS}
+  WHERE c.embedding_model = %(model)s {FILTERS_SQL}
   ORDER BY c.embedding <=> %(q)s
   LIMIT %(n)s
 )
@@ -96,7 +96,7 @@ _KEYWORD_SQL = f"""
 WITH q AS (SELECT to_tsquery('english', %(tsq)s) || to_tsquery('simple', %(tsq)s) AS query)
 SELECT c.id
 FROM chunks c JOIN sources s ON s.id = c.source_id, q
-WHERE c.tsv @@ q.query {_FILTERS}
+WHERE c.tsv @@ q.query {FILTERS_SQL}
 ORDER BY ts_rank_cd(c.tsv, q.query) DESC, c.id
 LIMIT %(n)s
 """
@@ -111,7 +111,7 @@ WHERE c.id = ANY(%s)
 """
 
 
-def _filter_params(sources: Sequence[str] | None, kinds: Sequence[str] | None) -> dict[str, Any]:
+def filter_params(sources: Sequence[str] | None, kinds: Sequence[str] | None) -> dict[str, Any]:
     parsed = parse_sources(sources)
     return {
         "f_names": parsed[0] if parsed else None,
@@ -151,10 +151,10 @@ def search(
     sources: list[str] | None = None,  # 'name' or 'name@version'
     kinds: list[str] | None = None,  # e.g. ['function', 'section']
     limit: int = 10,
-    token_budget: int = DEFAULT_TOKEN_BUDGET,
+    token_budget: int | None = DEFAULT_TOKEN_BUDGET,  # None: no budget, just `limit`
     candidates: int = DEFAULT_CANDIDATES,
 ) -> list[SearchResult]:
-    filters = _filter_params(sources, kinds)
+    filters = filter_params(sources, kinds)
     q = HalfVector(embedder.embed_query(query))  # network call: before the transaction opens
     # One REPEATABLE READ transaction = one snapshot for all three queries, so a re-index
     # that swaps this source's chunks mid-search can't make the details lookup miss ids.
@@ -176,7 +176,7 @@ def search(
             continue
         _, name, version, type_, path, kind, symbol, start, end, content = rows[r.chunk_id]
         cost = len(content) // 4
-        if results and tokens + cost > token_budget:
+        if token_budget is not None and results and tokens + cost > token_budget:
             break  # always return at least one result
         tokens += cost
         results.append(

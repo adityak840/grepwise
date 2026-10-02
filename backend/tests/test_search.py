@@ -11,16 +11,11 @@ from pgvector import HalfVector
 from grepwise.db.connection import connect
 from grepwise.db.migrate import MIGRATIONS_DIR, migrate
 from grepwise.ingest.embed import FakeEmbedder
-from grepwise.ingest.pipeline import index_docs, index_openapi, index_repo
+from grepwise.ingest.pipeline import index_docs, index_openapi
 from grepwise.search import hybrid
 from grepwise.search.citations import parse_citation
 from grepwise.search.hybrid import rrf_merge, search
-from tests.helpers import FIXTURES, count, fake_fetcher
-
-REPO_URL = "https://github.com/example/mini_repo"
-DOCS_URL = "https://github.com/example/docs_repo"
-PETSTORE = str(FIXTURES / "openapi" / "petstore.json")
-
+from tests.helpers import DOCS_URL, FIXTURES, PETSTORE, count, fake_fetcher
 
 # --- RRF merge (no database) -------------------------------------------------------------
 
@@ -43,19 +38,6 @@ def test_rrf_merge_empty() -> None:
 
 
 # --- Indexed fixtures --------------------------------------------------------------------
-
-
-@pytest.fixture
-def embedder() -> FakeEmbedder:
-    return FakeEmbedder(768)
-
-
-@pytest.fixture
-def indexed(conn: psycopg.Connection, embedder: FakeEmbedder) -> psycopg.Connection:
-    index_repo(conn, embedder, REPO_URL, "v1", fetcher=fake_fetcher(FIXTURES / "mini_repo"))
-    index_docs(conn, embedder, DOCS_URL, "v2", "docs", fetcher=fake_fetcher(FIXTURES / "docs_repo"))
-    index_openapi(conn, embedder, PETSTORE, "petstore", "1.0.27")
-    return conn
 
 
 def test_docs_index(indexed: psycopg.Connection) -> None:
@@ -247,7 +229,9 @@ def test_migration_003_on_m1_data_and_search_still_works(empty_db_url: str, tmp_
             "'def legacyHelper():\n    pass\n', 'h', %s, %s)",
             (doc[0], src[0], vec, embedder.model_id),
         )
-        assert migrate(c) == ["003_docs_search", "004_embedding_cache"]
+        # Every later migration applies cleanly on top of M1 data.
+        later = sorted(p.stem for p in MIGRATIONS_DIR.glob("*.sql"))[2:]
+        assert migrate(c) == later
         # 004 copies existing vectors into the cache, so nothing already paid for is lost.
         assert count(c, "SELECT count(*) FROM embedding_cache WHERE content_hash = 'h'") == 1
         results = search(c, embedder, "legacyHelper")

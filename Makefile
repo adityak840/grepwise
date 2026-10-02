@@ -6,9 +6,10 @@ GRAMMARS := ["python", "javascript", "typescript", "tsx"]
 
 .PHONY: setup db db-down migrate test lint fmt
 
-setup:  ## Install dependencies and download tree-sitter grammars (needs network once)
+setup:  ## Install dependencies, tree-sitter grammars and the local embedding model (network once)
 	cd backend && uv sync
 	$(UV) python -c 'import tree_sitter_language_pack as t; t.download($(GRAMMARS))'
+	$(UV) python -c 'from grepwise.config import get_settings as g; from grepwise.ingest.embed import LocalEmbedder as L; s = g(); L(s.local_embedding_model, cache_dir=s.model_cache_dir).embed_query("warm up")'
 
 db:  ## Start local Postgres + pgvector and wait until it is healthy
 	docker compose up -d --wait

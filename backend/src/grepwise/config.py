@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # (estimated) token budget for the returned results.
     search_candidates: int = 50
     search_token_budget: int = 4_000
+    # Tool outputs go straight into an LLM's context, so every one is capped.
+    tool_max_chars: int = 12_000
+    read_max_lines: int = 200
 
 
 @lru_cache

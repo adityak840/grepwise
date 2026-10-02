@@ -69,7 +69,7 @@ Two ways to use it:
 | **Filter** | Skip `node_modules`, lockfiles, binaries, generated files and very large files. |
 | **Split** | One splitter per source type (below). |
 | **Enrich** | Attach path, line range, symbol name, kind and a context header ("file X, inside class Y"). |
-| **Embed** | Gemini embeddings, in batches. Unchanged chunks are skipped using a content hash. |
+| **Embed** | A local open-source model (`nomic-embed-text-v1.5`, via fastembed), in small batches. An embedding cache keyed by model and content hash means nothing is embedded twice, and a failed run keeps its progress. |
 | **Store** | Write to Postgres and mark the source `ready`. |
 
 **Splitters:**
@@ -129,7 +129,7 @@ The LLM provider is behind one interface (OpenAI-compatible), so switching from 
 - **Two ways to connect:**
   - **Local (stdio):** `uvx grepwise`, published on PyPI.
   - **Remote (Streamable HTTP):** the hosted instance, with an API key.
-- Indexing new sources needs auth (it costs embedding quota).
+- Indexing new sources needs auth (it costs compute and storage).
 
 ### 3.7 Frontend (Next.js)
 
@@ -182,7 +182,7 @@ User pastes URL → API creates source + job → triggers GitHub Actions
 | Parsing | tree-sitter, Markdown parser, OpenAPI loader |
 | Database | PostgreSQL + pgvector (Neon) |
 | LLM | Gemini Flash (tool calling + structured outputs) |
-| Embeddings | Gemini embeddings, 768 dims |
+| Embeddings | `nomic-embed-text-v1.5` (quantized), run locally with fastembed (ONNX, CPU), 768 dims. Gemini embeddings remain an option (`EMBEDDER=gemini`) but the free tier caps at about 1,000 chunks a day |
 | MCP | Official Python MCP SDK |
 | Frontend | Next.js, TypeScript, Tailwind, shadcn/ui |
 | Testing | pytest, Vitest |
@@ -198,7 +198,8 @@ User pastes URL → API creates source + job → triggers GitHub Actions
 | API + remote MCP | Render (free web service) | Sleeps after 15 min idle; the UI shows "waking up" and warms it on page load |
 | Database | Neon (free) | 0.5 GB, never pauses |
 | Indexing worker | GitHub Actions | Free for public repos |
-| LLM + embeddings | Gemini API (free tier) | Rate-limit visitors; optional "use your own key" |
+| LLM | Gemini API (free tier) | For the agent only. Rate-limit visitors; optional "use your own key" |
+| Query embeddings | The local model, inside the API on Render | About 290 MB of memory and 12 ms per question; fits the 512 MB free instance |
 
 **Guardrails:** public repos only, a repo size limit, per-visitor rate limiting, read-only tools by default.
 **Secrets:** the Gemini key lives in a local `.env` file (never committed) and in Render's environment settings.
@@ -224,7 +225,7 @@ Each milestone ends with a code review before the next one starts.
 - Private repos
 - User accounts and multi-tenancy
 - Crawling arbitrary docs websites (preset docs sets only)
-- Self-hosted LLMs or embedding models
+- Self-hosted LLMs (embeddings are self-hosted; the agent's LLM is not)
 
 ---
 

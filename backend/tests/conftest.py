@@ -8,6 +8,9 @@ from psycopg.conninfo import make_conninfo
 from grepwise.config import get_settings
 from grepwise.db.connection import connect
 from grepwise.db.migrate import MIGRATIONS_DIR, migrate
+from grepwise.ingest.embed import FakeEmbedder
+from grepwise.ingest.pipeline import index_docs, index_openapi, index_repo
+from tests.helpers import DOCS_URL, PETSTORE, REPO_URL, fake_fetcher
 
 FIXTURES = Path(__file__).parent / "fixtures"
 TEST_DB = "grepwise_test"
@@ -45,3 +48,17 @@ def conn(empty_db_url: str) -> Iterator[psycopg.Connection]:
         assert migrate(raw) == []  # idempotent
     with connect(empty_db_url) as c:
         yield c
+
+
+@pytest.fixture
+def embedder() -> FakeEmbedder:
+    return FakeEmbedder(768)
+
+
+@pytest.fixture
+def indexed(conn: psycopg.Connection, embedder: FakeEmbedder) -> psycopg.Connection:
+    """The mini repo, the docs fixture and the Petstore spec, indexed with FakeEmbedder."""
+    index_repo(conn, embedder, REPO_URL, "v1", fetcher=fake_fetcher(FIXTURES / "mini_repo"))
+    index_docs(conn, embedder, DOCS_URL, "v2", "docs", fetcher=fake_fetcher(FIXTURES / "docs_repo"))
+    index_openapi(conn, embedder, PETSTORE, "petstore", "1.0.27")
+    return conn

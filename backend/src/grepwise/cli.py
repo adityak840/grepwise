@@ -1,12 +1,16 @@
 """The `grepwise` command."""
 
+import json
 import logging
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Any
 
 import psycopg
 import typer
+from pydantic import BaseModel, ValidationError
 from rich.console import Console
 from rich.table import Table
 
@@ -17,6 +21,13 @@ from grepwise.ingest.embed import Embedder, make_embedder
 from grepwise.ingest.pipeline import IndexSummary, index_docs, index_openapi, index_repo
 from grepwise.ingest.store import database_size, source_stats
 from grepwise.search.hybrid import SearchResult, search
+from grepwise.tools import ToolContext, call_tool, describe_validation_error, serialize
+from grepwise.tools.errors import ToolError
+from grepwise.tools.find_symbol import FindSymbolInput, find_symbol
+from grepwise.tools.get_endpoint import GetEndpointInput, get_endpoint
+from grepwise.tools.read_file import ReadFileInput, read_file
+from grepwise.tools.sources import ListSourcesInput, list_sources
+from grepwise.tools.verify import verify_citation
 
 app = typer.Typer(no_args_is_help=True, help="Grepwise: index code and ask cited questions.")
 db_app = typer.Typer(no_args_is_help=True, help="Database commands.")
@@ -114,6 +125,10 @@ def search_cmd(
         list[str] | None, typer.Option("--kind", help="function, section, endpoint... (repeatable)")
     ] = None,
     limit: Annotated[int, typer.Option("--limit", min=1, max=50)] = 10,
+    budget: Annotated[
+        int | None,
+        typer.Option("--budget", min=1, help="Stop before results exceed N estimated tokens"),
+    ] = None,
 ) -> None:
     """Hybrid search over everything indexed; shows which search found each result."""
     settings = get_settings()
@@ -122,7 +137,7 @@ def search_cmd(
         with connect() as conn:
             results = search(
                 conn, embedder, query, sources=source, kinds=kind, limit=limit,
-                token_budget=settings.search_token_budget,
+                token_budget=budget,  # only citations are printed, so no budget by default
                 candidates=settings.search_candidates,
             )  # fmt: skip
     except Exception as exc:
@@ -160,3 +175,156 @@ def stats(
         )
     console.print(table)
     console.print(f"Database size: {size}")
+
+
+# --- Tools (M3) --------------------------------------------------------------------------
+
+
+@contextmanager
+def _tools() -> Iterator[ToolContext]:
+    with connect() as conn:
+        yield ToolContext(conn, get_settings())
+
+
+def _input[M: BaseModel](model: type[M], **fields: Any) -> M:
+    """Build a tool's input model; invalid input becomes a one-line error, not a traceback."""
+    try:
+        return model(**fields)
+    except ValidationError as exc:
+        console.print("[red]bad_input:[/red] ", end="")
+        console.print(describe_validation_error(exc), markup=False, highlight=False)
+        raise typer.Exit(1) from None
+
+
+def _fail(err: ToolError) -> None:
+    console.print(f"[red]{err.error.code}:[/red] {err.error.message}", markup=True)
+    console.print(err.error.hint, markup=False, style="dim")
+    raise typer.Exit(1)
+
+
+def _show(citation: str, content: str) -> None:
+    console.print(citation, style="bold", markup=False, highlight=False)
+    typer.echo(content.rstrip("\n"))  # raw text: never interpreted as markup
+
+
+@app.command()
+def sources(
+    type_: Annotated[
+        SourceType | None, typer.Option("--type", help="Only this source type")
+    ] = None,
+) -> None:
+    """List indexed sources (the list_sources tool)."""
+    with _tools() as ctx:
+        out = list_sources(ctx, _input(ListSourcesInput, type=type_.value if type_ else None))
+    if isinstance(out, ToolError):
+        _fail(out)
+        return
+    table = Table("ref", "type", "status", "documents", "chunks", "subpath", "embedding model")
+    for src in out.sources:
+        table.add_row(
+            src.ref, src.type, src.status, str(src.documents), str(src.chunks),
+            src.subpath or "", src.embedding_model or "",
+        )  # fmt: skip
+    console.print(table)
+
+
+@app.command()
+def symbol(
+    name: Annotated[str, typer.Argument(help="e.g. TimestampSigner, Signer.sign or sign")],
+    source: Annotated[list[str] | None, typer.Option("--source", help="Repeatable")] = None,
+    kind: Annotated[list[str] | None, typer.Option("--kind", help="Repeatable")] = None,
+) -> None:
+    """Find where a symbol is defined (the find_symbol tool)."""
+    with _tools() as ctx:
+        out = find_symbol(ctx, _input(FindSymbolInput, name=name, sources=source, kinds=kind))
+    if isinstance(out, ToolError):
+        _fail(out)
+        return
+    if not out.matches:
+        console.print(f"No symbol named {name!r}.", markup=False)
+        raise typer.Exit(1)
+    if out.case_insensitive:
+        console.print("No exact-case match; showing case-insensitive matches.", style="dim")
+    table = Table("citation", "kind", "symbol", "signature")
+    for m in out.matches:
+        table.add_row(m.citation, m.kind, m.symbol, m.signature)
+    console.print(table)
+
+
+def _parse_lines(spec: str | None) -> tuple[int | None, int | None]:
+    if spec is None:
+        return None, None
+    match = re.fullmatch(r"(\d+)(?:-(\d+))?", spec.strip())
+    if not match:
+        raise typer.BadParameter("use START-END, e.g. 20-60", param_hint="--lines")
+    start = int(match[1])
+    return start, int(match[2]) if match[2] else start
+
+
+@app.command()
+def read(
+    source: Annotated[str, typer.Argument(help="name@version (or name)")],
+    path: Annotated[str, typer.Argument(help="File path, or an endpoint like 'GET /pet/{petId}'")],
+    lines: Annotated[str | None, typer.Option("--lines", help="e.g. 20-60")] = None,
+) -> None:
+    """Print exact lines of an indexed file (the read_file tool)."""
+    start, end = _parse_lines(lines)
+    with _tools() as ctx:
+        out = read_file(
+            ctx, _input(ReadFileInput, source=source, path=path, start_line=start, end_line=end)
+        )
+    if isinstance(out, ToolError):
+        _fail(out)
+        return
+    _show(out.citation, out.content)
+    if out.truncated:
+        console.print(
+            f"… truncated; continue with --lines {out.next_start_line}-{out.total_lines}",
+            style="dim",
+        )
+
+
+@app.command()
+def endpoint(
+    target: Annotated[str, typer.Argument(help="'GET /pet/42', '/pet/{petId}', ...")],
+    source: Annotated[str | None, typer.Option("--source", help="name or name@version")] = None,
+) -> None:
+    """Show an API endpoint's full description (the get_endpoint tool)."""
+    with _tools() as ctx:
+        out = get_endpoint(ctx, _input(GetEndpointInput, path=target, source=source))
+    if isinstance(out, ToolError):
+        _fail(out)
+        return
+    for i, ep in enumerate(out.endpoints):
+        if i:
+            typer.echo()
+        _show(ep.citation, ep.content)
+
+
+@app.command()
+def verify(
+    citation: Annotated[str, typer.Argument(help="name@version:path:L<start>-L<end>")],
+) -> None:
+    """Check a citation against the database and print the cited lines."""
+    with connect() as conn:
+        out = verify_citation(conn, citation)
+    if isinstance(out, ToolError):
+        _fail(out)
+        return
+    console.print("valid", style="green")
+    _show(out.citation, out.content)
+
+
+@app.command()
+def tool(
+    name: Annotated[str, typer.Argument(help="list_sources, search, read_file, ...")],
+    args: Annotated[str, typer.Argument(help='JSON arguments, e.g. \'{"query": "..."}\'')] = "{}",
+) -> None:
+    """Call a tool exactly as an agent would and print the raw JSON it gets back."""
+    try:
+        parsed = json.loads(args)
+    except json.JSONDecodeError as exc:
+        raise typer.BadParameter(f"not valid JSON: {exc}", param_hint="ARGS") from None
+    with _tools() as ctx:
+        result = call_tool(ctx, name, parsed)
+    typer.echo(serialize(result))
