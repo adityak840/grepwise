@@ -247,7 +247,9 @@ def test_migration_003_on_m1_data_and_search_still_works(empty_db_url: str, tmp_
             "'def legacyHelper():\n    pass\n', 'h', %s, %s)",
             (doc[0], src[0], vec, embedder.model_id),
         )
-        assert migrate(c) == ["003_docs_search"]
+        assert migrate(c) == ["003_docs_search", "004_embedding_cache"]
+        # 004 copies existing vectors into the cache, so nothing already paid for is lost.
+        assert count(c, "SELECT count(*) FROM embedding_cache WHERE content_hash = 'h'") == 1
         results = search(c, embedder, "legacyHelper")
         assert results[0].symbol == "legacyHelper" and results[0].keyword_rank == 1
         assert count(c, "SELECT count(*) FROM chunks WHERE search_text IS NULL") == 1

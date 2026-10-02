@@ -21,9 +21,13 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://grepwise:grepwise@localhost:5432/grepwise"
     # SecretStr keeps the key out of reprs, logs and tracebacks.
     gemini_api_key: SecretStr = SecretStr("")
-    embedding_model: str = "gemini-embedding-001"
+    # local: an open-source model run on this machine (no quota). gemini: Google's API (free
+    # tier caps at ~1,000 chunks/day). fake: deterministic vectors for tests.
+    embedder: Literal["local", "gemini", "fake"] = "local"
+    local_embedding_model: str = "nomic-ai/nomic-embed-text-v1.5-Q"
+    model_cache_dir: Path = Path.home() / ".cache" / "grepwise" / "fastembed"
+    embedding_model: str = "gemini-embedding-001"  # used when embedder = gemini
     embedding_dim: int = 768
-    embedder: Literal["gemini", "fake"] = "gemini"
     # Stay under Gemini's per-minute token quota (free tier is tight). Raise on a paid key.
     embed_tokens_per_minute: int = 20_000
     # Hybrid search: candidates taken from each of vector and keyword search, and the

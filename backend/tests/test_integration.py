@@ -11,7 +11,7 @@ import psycopg
 import pytest
 
 from grepwise.ingest.chunkers import split_lines
-from grepwise.ingest.embed import FakeEmbedder
+from grepwise.ingest.embed import DOCUMENT, FakeEmbedder
 from grepwise.ingest.pipeline import index_repo
 from tests.helpers import FIXTURES, count, fake_fetcher
 
@@ -112,6 +112,30 @@ def test_switching_embedding_model_re_embeds_everything(
     models = {m for (m,) in conn.execute("SELECT DISTINCT embedding_model FROM chunks")}
     assert models == {"other-model:768"}
 
-    # Back to the first model: its old vectors were replaced, so nothing is reused either.
+    # Back to the first model: its vectors are still in the embedding cache, so switching back
+    # costs nothing.
     third = index_repo(conn, FakeEmbedder(768), URL, "v2", fetcher=fake_fetcher(repo))
-    assert third.embeddings_reused == 0
+    assert third.embeddings_created == 0 and third.embeddings_reused == n_chunks
+
+
+def test_a_failed_run_keeps_the_embeddings_it_made(
+    conn: psycopg.Connection, repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from grepwise.ingest import pipeline
+
+    monkeypatch.setattr(pipeline, "EMBED_SAVE_EVERY", 2)  # save after every 2 new embeddings
+
+    class DiesOnSecondGroup(FakeEmbedder):
+        def _embed_batch(self, texts: list[str], task: str = DOCUMENT) -> list[list[float]]:
+            if self.calls >= 1:
+                raise RuntimeError("quota exhausted")
+            return super()._embed_batch(texts, task)
+
+    with pytest.raises(RuntimeError):
+        index_repo(conn, DiesOnSecondGroup(768), URL, "v1", fetcher=fake_fetcher(repo))
+    saved = count(conn, "SELECT count(*) FROM embedding_cache")
+    assert saved == 2
+
+    rerun = index_repo(conn, FakeEmbedder(768), URL, "v1", fetcher=fake_fetcher(repo))
+    assert rerun.embeddings_reused == 2
+    assert rerun.embeddings_created == rerun.chunks_by_kind.total() - 2

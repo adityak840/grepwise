@@ -5,6 +5,7 @@ marking the source `ready` or `failed`. Each `index_*` function only builds docu
 """
 
 import contextlib
+import logging
 import re
 import time
 from collections import Counter
@@ -20,13 +21,18 @@ from grepwise.ingest.chunkers import split_lines
 from grepwise.ingest.chunkers.code import chunk_file
 from grepwise.ingest.chunkers.markdown import DOCS_EXTENSIONS, chunk_markdown
 from grepwise.ingest.chunkers.openapi import chunk_endpoint, render_operations
-from grepwise.ingest.embed import Embedder
+from grepwise.ingest.embed import Embedder, Vector
 from grepwise.ingest.enrich import EnrichedChunk, docs_header, endpoint_header, enrich
 from grepwise.ingest.filters import collect_files
 from grepwise.ingest.openapi import load_spec
 
 Fetcher = Callable[[str, str], AbstractContextManager[fetch.Checkout]]
 SpecLoader = Callable[[str], dict[str, Any]]
+
+log = logging.getLogger(__name__)
+
+# New embeddings are saved to the cache after every this-many, so a failure loses little.
+EMBED_SAVE_EVERY = 64
 
 # Names and versions end up in citations (`name@version:path:Lx-Ly`), so no '@' or ':'.
 _SAFE_LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
@@ -81,8 +87,8 @@ def _index(
         documents = build(summary)
         all_chunks = [e for d in documents for e in d.chunks]
         summary.chunks_by_kind.update(e.chunk.kind for e in all_chunks)
-        embeddings = store.existing_embeddings(
-            conn, type_, name, embedder.model_id, (e.content_hash for e in all_chunks)
+        embeddings = store.cached_embeddings(
+            conn, embedder.model_id, (e.content_hash for e in all_chunks)
         )
         # Embed each new hash once, even if the same chunk text appears in several files.
         todo = {
@@ -90,7 +96,7 @@ def _index(
         }
         summary.embeddings_reused = sum(1 for e in all_chunks if e.content_hash in embeddings)
         summary.embeddings_created = len(todo)
-        embeddings.update(zip(todo, embedder.embed(list(todo.values())), strict=True))
+        _embed_and_save(conn, embedder, todo, embeddings)
 
         store.replace_content(
             conn, source_id, summary.commit_sha or None, documents, embeddings, embedder.model_id
@@ -102,6 +108,23 @@ def _index(
         raise
     summary.seconds = time.monotonic() - started
     return summary
+
+
+def _embed_and_save(
+    conn: psycopg.Connection,
+    embedder: Embedder,
+    todo: dict[str, str],
+    embeddings: dict[str, Vector],
+) -> None:
+    """Embed `todo` (hash -> text) in groups, saving each group to the cache as it completes."""
+    items = list(todo.items())
+    for i in range(0, len(items), EMBED_SAVE_EVERY):
+        group = items[i : i + EMBED_SAVE_EVERY]
+        hashes, texts = [h for h, _ in group], [t for _, t in group]
+        vectors = dict(zip(hashes, embedder.embed(texts), strict=True))
+        store.save_embeddings(conn, embedder.model_id, vectors)
+        embeddings.update(vectors)
+        log.info("Embedded %d/%d new chunks", min(i + EMBED_SAVE_EVERY, len(items)), len(items))
 
 
 def index_repo(

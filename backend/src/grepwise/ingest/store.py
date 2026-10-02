@@ -51,21 +51,26 @@ def mark_failed(conn: psycopg.Connection, source_id: int, error: str) -> None:
     )
 
 
-def existing_embeddings(
-    conn: psycopg.Connection, type_: str, name: str, model_id: str, hashes: Iterable[str]
+def cached_embeddings(
+    conn: psycopg.Connection, model_id: str, hashes: Iterable[str]
 ) -> dict[str, Vector]:
-    """Embeddings already stored for this source name (any version) by the same embedding
-    model, keyed by content hash."""
+    """Embeddings this model has already made for these content hashes (from any source)."""
     rows = conn.execute(
-        """
-        SELECT DISTINCT ON (c.content_hash) c.content_hash, c.embedding
-        FROM chunks c JOIN sources s ON s.id = c.source_id
-        WHERE s.type = %s AND s.name = %s AND c.embedding_model = %s
-          AND c.content_hash = ANY(%s) AND c.embedding IS NOT NULL
-        """,
-        (type_, name, model_id, list(set(hashes))),
+        "SELECT content_hash, embedding FROM embedding_cache "
+        "WHERE model_id = %s AND content_hash = ANY(%s)",
+        (model_id, list(set(hashes))),
     ).fetchall()
     return {h: np.asarray(emb.to_numpy(), dtype=np.float32) for h, emb in rows}
+
+
+def save_embeddings(conn: psycopg.Connection, model_id: str, items: dict[str, Vector]) -> None:
+    """Save new embeddings right away (autocommit), so a later failure can't lose them."""
+    with conn.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO embedding_cache (model_id, content_hash, embedding) VALUES (%s, %s, %s) "
+            "ON CONFLICT DO NOTHING",
+            [(model_id, h, HalfVector(v)) for h, v in items.items()],
+        )
 
 
 def replace_content(
