@@ -20,7 +20,7 @@ assert MAX_LINE_CHARS <= MAX_CHUNK_CHARS
 
 @dataclass(frozen=True)
 class Chunk:
-    kind: str  # function | method | class | module | window
+    kind: str  # function | method | class | module | window | section | endpoint
     symbol: str | None  # qualified, e.g. 'Signer.sign'
     start_line: int  # 1-based, inclusive
     end_line: int  # 1-based, inclusive

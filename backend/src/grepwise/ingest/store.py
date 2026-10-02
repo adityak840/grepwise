@@ -16,20 +16,29 @@ class DocumentRecord:
     path: str
     language: str | None
     line_count: int
+    content: str  # full text, for M3's read_file
     chunks: list[EnrichedChunk]
 
 
-def begin_source(conn: psycopg.Connection, type_: str, name: str, url: str, version: str) -> int:
+def begin_source(
+    conn: psycopg.Connection,
+    type_: str,
+    name: str,
+    url: str,
+    version: str,
+    subpath: str | None = None,
+) -> int:
     """Create or reuse the `sources` row and mark it `indexing`. Returns its id."""
     row = conn.execute(
         """
-        INSERT INTO sources (type, name, url, version, status)
-        VALUES (%s, %s, %s, %s, 'indexing')
+        INSERT INTO sources (type, name, url, version, subpath, status)
+        VALUES (%s, %s, %s, %s, %s, 'indexing')
         ON CONFLICT (type, name, version) DO UPDATE
-          SET url = EXCLUDED.url, status = 'indexing', error = NULL, updated_at = now()
+          SET url = EXCLUDED.url, subpath = EXCLUDED.subpath, status = 'indexing',
+              error = NULL, updated_at = now()
         RETURNING id
         """,
-        (type_, name, url, version),
+        (type_, name, url, version, subpath),
     ).fetchone()
     assert row is not None
     return int(row[0])
@@ -62,7 +71,7 @@ def existing_embeddings(
 def replace_content(
     conn: psycopg.Connection,
     source_id: int,
-    commit_sha: str,
+    commit_sha: str | None,
     documents: Sequence[DocumentRecord],
     embeddings: dict[str, Vector],
     embedding_model: str,
@@ -73,10 +82,10 @@ def replace_content(
         for doc in documents:
             cur.execute(
                 """
-                INSERT INTO documents (source_id, path, language, line_count)
-                VALUES (%s, %s, %s, %s) RETURNING id
+                INSERT INTO documents (source_id, path, language, line_count, content)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id
                 """,
-                (source_id, doc.path, doc.language, doc.line_count),
+                (source_id, doc.path, doc.language, doc.line_count, doc.content),
             )
             row = cur.fetchone()
             assert row is not None
@@ -84,14 +93,16 @@ def replace_content(
             cur.executemany(
                 """
                 INSERT INTO chunks (document_id, source_id, kind, symbol, start_line, end_line,
-                                    header, content, content_hash, embedding, embedding_model)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    header, content, content_hash, embedding, embedding_model,
+                                    search_text)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 [
                     (
                         doc_id, source_id, e.chunk.kind, e.chunk.symbol,
                         e.chunk.start_line, e.chunk.end_line, e.header, e.chunk.content,
                         e.content_hash, HalfVector(embeddings[e.content_hash]), embedding_model,
+                        e.search_text,
                     )
                     for e in doc.chunks
                 ],
@@ -116,15 +127,18 @@ class SourceStats:
     error: str | None
 
 
-def source_stats(conn: psycopg.Connection) -> list[SourceStats]:
+def source_stats(conn: psycopg.Connection, type_: str | None = None) -> list[SourceStats]:
     rows = conn.execute(
         """
         SELECT s.name, s.type, s.version, s.status,
                (SELECT count(*) FROM documents d WHERE d.source_id = s.id),
                (SELECT count(*) FROM chunks c WHERE c.source_id = s.id),
                s.error
-        FROM sources s ORDER BY s.name, s.version
-        """
+        FROM sources s
+        WHERE %(type)s::text IS NULL OR s.type = %(type)s
+        ORDER BY s.name, s.version
+        """,
+        {"type": type_},
     ).fetchall()
     return [SourceStats(*row) for row in rows]
 

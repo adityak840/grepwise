@@ -8,12 +8,15 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "google-genai>=2.27.0",
+    "httpx>=0.28.1",
+    "markdown-it-py>=4.2.0",
     "numpy>=2.5.3",
     "pgvector>=0.5.0",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
     # 0.26.0 corrupts Node.start_point/end_point after the first read (wrong rows, then
     # segfaults). Lift this pin only once tests/test_chunkers.py passes on the new version.
+    "pyyaml>=6.0.3",
     "tree-sitter>=0.25,<0.26",
     "tree-sitter-language-pack>=1.20.0",
     "typer>=0.27.2",
@@ -31,6 +34,7 @@ dev = [
     "mypy>=2.4.0",
     "pytest>=9.1.1",
     "ruff>=0.16.10",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [tool.ruff]

@@ -4,53 +4,20 @@ Uses a separate `grepwise_test` database, rebuilt from scratch for each test.
 """
 
 import shutil
-from collections.abc import Generator, Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
 import psycopg
 import pytest
-from psycopg.conninfo import make_conninfo
 
-from grepwise.config import get_settings
-from grepwise.db.connection import connect
-from grepwise.db.migrate import migrate
 from grepwise.ingest.chunkers import split_lines
 from grepwise.ingest.embed import FakeEmbedder
-from grepwise.ingest.fetch import Checkout
 from grepwise.ingest.pipeline import index_repo
+from tests.helpers import FIXTURES, count, fake_fetcher
 
 pytestmark = pytest.mark.integration
 
-FIXTURES = Path(__file__).parent / "fixtures"
 URL = "https://github.com/example/mini_repo"
-TEST_DB = "grepwise_test"
-
-
-def _test_db_url() -> str:
-    url = get_settings().database_url
-    try:
-        admin = psycopg.connect(url, autocommit=True, connect_timeout=3)
-    except psycopg.OperationalError as exc:
-        pytest.skip(f"Postgres not reachable (run `make db`): {exc}")
-    with admin:
-        exists = admin.execute("SELECT 1 FROM pg_database WHERE datname = %s", (TEST_DB,))
-        if not exists.fetchone():
-            admin.execute(f'CREATE DATABASE "{TEST_DB}"')
-    return make_conninfo(url, dbname=TEST_DB)
-
-
-@pytest.fixture
-def conn() -> Iterator[psycopg.Connection]:
-    url = _test_db_url()
-    with connect(url, vectors=False) as raw:
-        raw.execute("DROP SCHEMA public CASCADE")
-        raw.execute("CREATE SCHEMA public")
-        assert migrate(raw) == ["001_init", "002_embedding_model"]
-        assert migrate(raw) == []  # idempotent
-    with connect(url) as c:
-        yield c
 
 
 @pytest.fixture
@@ -65,30 +32,16 @@ def repo(tmp_path: Path) -> Path:
     return root
 
 
-def fake_fetcher(root: Path, sha: str = "a" * 40):  # type: ignore[no-untyped-def]
-    @contextmanager
-    def fetch(url: str, ref: str) -> Generator[Checkout]:
-        yield Checkout(path=root, commit_sha=sha)
-
-    return fetch
-
-
-def count(conn: psycopg.Connection, sql: str) -> int:
-    row = conn.execute(sql).fetchone()
-    assert row is not None
-    return int(row[0])
-
-
 def test_index_reindex_and_reuse(conn: psycopg.Connection, repo: Path) -> None:
     embedder = FakeEmbedder(768)
     first = index_repo(conn, embedder, URL, "v1", fetcher=fake_fetcher(repo))
 
-    assert first.files_kept == 4
+    assert first.files_kept == 5
     assert first.skipped == {"skipped_dir": 1, "lockfile": 1, "binary": 1}
     n_chunks = first.chunks_by_kind.total()
     assert first.embeddings_created == n_chunks and first.embeddings_reused == 0
     assert count(conn, "SELECT count(*) FROM sources WHERE status = 'ready'") == 1
-    assert count(conn, "SELECT count(*) FROM documents") == 4
+    assert count(conn, "SELECT count(*) FROM documents") == 5
     assert count(conn, "SELECT count(*) FROM chunks") == n_chunks
     assert count(conn, "SELECT count(*) FROM chunks WHERE symbol = 'Signer.sign'") == 0  # small
     assert count(conn, "SELECT count(*) FROM chunks WHERE symbol = 'Signer'") == 1
@@ -132,7 +85,7 @@ def test_failure_marks_source_failed_and_keeps_old_chunks(
     n_chunks = count(conn, "SELECT count(*) FROM chunks")
 
     class BrokenEmbedder(FakeEmbedder):
-        def _embed_batch(self, texts: list[str]) -> list[list[float]]:
+        def _embed_batch(self, texts: list[str], task: str = "") -> list[list[float]]:
             raise RuntimeError("quota exhausted")
 
     (repo / "new.py").write_text("def brand_new():\n    return 42\n")

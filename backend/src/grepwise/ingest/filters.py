@@ -28,6 +28,20 @@ class RepoTooLargeError(Exception):
     pass
 
 
+class BadSubpathError(Exception):
+    pass
+
+
+def resolve_subpath(root: Path, subpath: str) -> Path:
+    """`root / subpath`, refusing anything that escapes `root` or isn't a folder."""
+    if not subpath or subpath.startswith("/") or ".." in Path(subpath).parts:
+        raise BadSubpathError(f"Invalid --path {subpath!r}: use a folder inside the repo.")
+    folder = (root / subpath).resolve()
+    if not folder.is_relative_to(root.resolve()) or not folder.is_dir():
+        raise BadSubpathError(f"Folder {subpath!r} not found in the repo.")
+    return folder
+
+
 @dataclass(frozen=True)
 class SourceFile:
     path: str  # relative to the repo root, always with '/'
@@ -69,11 +83,17 @@ def read_text(path: Path) -> tuple[str | None, str | None]:
     return text, None
 
 
-def collect_files(root: Path) -> FilterResult:
-    """Walk `root`, skipping junk folders and files. Files are returned sorted by path."""
+def collect_files(
+    root: Path, subpath: str | None = None, extensions: tuple[str, ...] | None = None
+) -> FilterResult:
+    """Walk `root` (or only `root/subpath`), skipping junk folders and files. With
+    `extensions`, other files are skipped as 'other_type'. Paths stay relative to `root`;
+    files are returned sorted by path."""
     result = FilterResult()
     total_bytes = 0
-    for dirpath, dirnames, filenames in os.walk(root):
+    start = resolve_subpath(root, subpath) if subpath else root
+    prefix = f"{start.relative_to(root.resolve()).as_posix()}/" if subpath else ""
+    for dirpath, dirnames, filenames in os.walk(start):
         # Prune in place so os.walk never descends into skipped folders.
         for d in list(dirnames):
             if d in SKIP_DIRS:
@@ -82,13 +102,15 @@ def collect_files(root: Path) -> FilterResult:
         for name in filenames:
             path = Path(dirpath) / name
             reason = skip_reason_for_name(name)
+            if reason is None and extensions and not name.lower().endswith(extensions):
+                reason = "other_type"
             text = None
             if reason is None:
                 text, reason = read_text(path)
             if reason is not None or text is None:
                 result.skipped[reason or "unreadable"] += 1
                 continue
-            rel = path.relative_to(root).as_posix()
+            rel = prefix + path.relative_to(start).as_posix()
             result.kept.append(SourceFile(path=rel, text=text))
             total_bytes += len(text.encode())
             if len(result.kept) > MAX_FILES:

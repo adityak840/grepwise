@@ -25,7 +25,11 @@ class Settings(BaseSettings):
     embedding_dim: int = 768
     embedder: Literal["gemini", "fake"] = "gemini"
     # Stay under Gemini's per-minute token quota (free tier is tight). Raise on a paid key.
-    embed_tokens_per_minute: int = 25_000
+    embed_tokens_per_minute: int = 20_000
+    # Hybrid search: candidates taken from each of vector and keyword search, and the
+    # (estimated) token budget for the returned results.
+    search_candidates: int = 50
+    search_token_budget: int = 4_000
 
 
 @lru_cache

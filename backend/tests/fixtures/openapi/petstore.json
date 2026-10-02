@@ -1,0 +1,1996 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Petstore",
+    "version": "1.0.27"
+  },
+  "paths": {
+    "/pet": {
+      "put": {
+        "operationId": "updatePet",
+        "summary": "Update an existing pet",
+        "tags": [
+          "pet"
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/Pet"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pet"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pet not found"
+          }
+        }
+      },
+      "post": {
+        "operationId": "addPet",
+        "summary": "Add a new pet to the store",
+        "tags": [
+          "pet"
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/Pet"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation"
+          }
+        }
+      }
+    },
+    "/pet/findByStatus": {
+      "get": {
+        "operationId": "findPetsByStatus",
+        "summary": "Finds pets by status",
+        "tags": [
+          "pet"
+        ],
+        "description": "Multiple status values can be provided.\nUse commas to separate them.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Status values to filter by",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "available",
+                "pending",
+                "sold"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Pet"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pet/{petId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/PetId"
+        }
+      ],
+      "get": {
+        "operationId": "getPetById",
+        "summary": "Find pet by ID",
+        "tags": [
+          "pet"
+        ],
+        "description": "Returns a single pet",
+        "responses": {
+          "200": {
+            "description": "successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pet"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pet"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pet not found"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deletePet",
+        "summary": "Deletes a pet",
+        "tags": [
+          "pet"
+        ],
+        "deprecated": true,
+        "responses": {
+          "400": {
+            "description": "Invalid pet value"
+          }
+        }
+      }
+    },
+    "/store/order": {
+      "post": {
+        "operationId": "placeOrder",
+        "summary": "Place an order for a pet",
+        "tags": [
+          "store"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Order"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/OrderOk"
+          }
+        }
+      }
+    },
+    "/categories/{categoryId}": {
+      "get": {
+        "operationId": "getCategory",
+        "summary": "Get a category and its parents",
+        "parameters": [
+          {
+            "name": "categoryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The category",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Category"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deep": {
+      "get": {
+        "operationId": "getDeep",
+        "summary": "A deeply nested schema",
+        "responses": {
+          "200": {
+            "description": "Nested",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/A"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/big": {
+      "get": {
+        "operationId": "getBigReport",
+        "summary": "Download the big daily report",
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BigReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "PetId": {
+        "name": "petId",
+        "in": "path",
+        "required": true,
+        "description": "ID of pet to return",
+        "schema": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "requestBodies": {
+      "Pet": {
+        "description": "Pet object",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Pet"
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "OrderOk": {
+        "description": "Order placed",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Order"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Pet": {
+        "type": "object",
+        "required": [
+          "name",
+          "photoUrls"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string",
+            "description": "The pet's name"
+          },
+          "category": {
+            "$ref": "#/components/schemas/Category"
+          },
+          "photoUrls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Tag"
+            }
+          },
+          "status": {
+            "type": "string",
+            "description": "pet status in the store",
+            "enum": [
+              "available",
+              "pending",
+              "sold"
+            ]
+          }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent": {
+            "$ref": "#/components/schemas/Category"
+          }
+        }
+      },
+      "Tag": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "petId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "shipDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "complete": {
+            "type": "boolean"
+          }
+        }
+      },
+      "A": {
+        "type": "object",
+        "properties": {
+          "b": {
+            "$ref": "#/components/schemas/B"
+          }
+        }
+      },
+      "B": {
+        "type": "object",
+        "properties": {
+          "c": {
+            "$ref": "#/components/schemas/C"
+          }
+        }
+      },
+      "C": {
+        "type": "object",
+        "properties": {
+          "d": {
+            "$ref": "#/components/schemas/D"
+          }
+        }
+      },
+      "D": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "BigReport": {
+        "type": "object",
+        "properties": {
+          "metric_000": {
+            "type": "number",
+            "description": "Measurement number 0 of the daily report."
+          },
+          "metric_001": {
+            "type": "number",
+            "description": "Measurement number 1 of the daily report."
+          },
+          "metric_002": {
+            "type": "number",
+            "description": "Measurement number 2 of the daily report."
+          },
+          "metric_003": {
+            "type": "number",
+            "description": "Measurement number 3 of the daily report."
+          },
+          "metric_004": {
+            "type": "number",
+            "description": "Measurement number 4 of the daily report."
+          },
+          "metric_005": {
+            "type": "number",
+            "description": "Measurement number 5 of the daily report."
+          },
+          "metric_006": {
+            "type": "number",
+            "description": "Measurement number 6 of the daily report."
+          },
+          "metric_007": {
+            "type": "number",
+            "description": "Measurement number 7 of the daily report."
+          },
+          "metric_008": {
+            "type": "number",
+            "description": "Measurement number 8 of the daily report."
+          },
+          "metric_009": {
+            "type": "number",
+            "description": "Measurement number 9 of the daily report."
+          },
+          "metric_010": {
+            "type": "number",
+            "description": "Measurement number 10 of the daily report."
+          },
+          "metric_011": {
+            "type": "number",
+            "description": "Measurement number 11 of the daily report."
+          },
+          "metric_012": {
+            "type": "number",
+            "description": "Measurement number 12 of the daily report."
+          },
+          "metric_013": {
+            "type": "number",
+            "description": "Measurement number 13 of the daily report."
+          },
+          "metric_014": {
+            "type": "number",
+            "description": "Measurement number 14 of the daily report."
+          },
+          "metric_015": {
+            "type": "number",
+            "description": "Measurement number 15 of the daily report."
+          },
+          "metric_016": {
+            "type": "number",
+            "description": "Measurement number 16 of the daily report."
+          },
+          "metric_017": {
+            "type": "number",
+            "description": "Measurement number 17 of the daily report."
+          },
+          "metric_018": {
+            "type": "number",
+            "description": "Measurement number 18 of the daily report."
+          },
+          "metric_019": {
+            "type": "number",
+            "description": "Measurement number 19 of the daily report."
+          },
+          "metric_020": {
+            "type": "number",
+            "description": "Measurement number 20 of the daily report."
+          },
+          "metric_021": {
+            "type": "number",
+            "description": "Measurement number 21 of the daily report."
+          },
+          "metric_022": {
+            "type": "number",
+            "description": "Measurement number 22 of the daily report."
+          },
+          "metric_023": {
+            "type": "number",
+            "description": "Measurement number 23 of the daily report."
+          },
+          "metric_024": {
+            "type": "number",
+            "description": "Measurement number 24 of the daily report."
+          },
+          "metric_025": {
+            "type": "number",
+            "description": "Measurement number 25 of the daily report."
+          },
+          "metric_026": {
+            "type": "number",
+            "description": "Measurement number 26 of the daily report."
+          },
+          "metric_027": {
+            "type": "number",
+            "description": "Measurement number 27 of the daily report."
+          },
+          "metric_028": {
+            "type": "number",
+            "description": "Measurement number 28 of the daily report."
+          },
+          "metric_029": {
+            "type": "number",
+            "description": "Measurement number 29 of the daily report."
+          },
+          "metric_030": {
+            "type": "number",
+            "description": "Measurement number 30 of the daily report."
+          },
+          "metric_031": {
+            "type": "number",
+            "description": "Measurement number 31 of the daily report."
+          },
+          "metric_032": {
+            "type": "number",
+            "description": "Measurement number 32 of the daily report."
+          },
+          "metric_033": {
+            "type": "number",
+            "description": "Measurement number 33 of the daily report."
+          },
+          "metric_034": {
+            "type": "number",
+            "description": "Measurement number 34 of the daily report."
+          },
+          "metric_035": {
+            "type": "number",
+            "description": "Measurement number 35 of the daily report."
+          },
+          "metric_036": {
+            "type": "number",
+            "description": "Measurement number 36 of the daily report."
+          },
+          "metric_037": {
+            "type": "number",
+            "description": "Measurement number 37 of the daily report."
+          },
+          "metric_038": {
+            "type": "number",
+            "description": "Measurement number 38 of the daily report."
+          },
+          "metric_039": {
+            "type": "number",
+            "description": "Measurement number 39 of the daily report."
+          },
+          "metric_040": {
+            "type": "number",
+            "description": "Measurement number 40 of the daily report."
+          },
+          "metric_041": {
+            "type": "number",
+            "description": "Measurement number 41 of the daily report."
+          },
+          "metric_042": {
+            "type": "number",
+            "description": "Measurement number 42 of the daily report."
+          },
+          "metric_043": {
+            "type": "number",
+            "description": "Measurement number 43 of the daily report."
+          },
+          "metric_044": {
+            "type": "number",
+            "description": "Measurement number 44 of the daily report."
+          },
+          "metric_045": {
+            "type": "number",
+            "description": "Measurement number 45 of the daily report."
+          },
+          "metric_046": {
+            "type": "number",
+            "description": "Measurement number 46 of the daily report."
+          },
+          "metric_047": {
+            "type": "number",
+            "description": "Measurement number 47 of the daily report."
+          },
+          "metric_048": {
+            "type": "number",
+            "description": "Measurement number 48 of the daily report."
+          },
+          "metric_049": {
+            "type": "number",
+            "description": "Measurement number 49 of the daily report."
+          },
+          "metric_050": {
+            "type": "number",
+            "description": "Measurement number 50 of the daily report."
+          },
+          "metric_051": {
+            "type": "number",
+            "description": "Measurement number 51 of the daily report."
+          },
+          "metric_052": {
+            "type": "number",
+            "description": "Measurement number 52 of the daily report."
+          },
+          "metric_053": {
+            "type": "number",
+            "description": "Measurement number 53 of the daily report."
+          },
+          "metric_054": {
+            "type": "number",
+            "description": "Measurement number 54 of the daily report."
+          },
+          "metric_055": {
+            "type": "number",
+            "description": "Measurement number 55 of the daily report."
+          },
+          "metric_056": {
+            "type": "number",
+            "description": "Measurement number 56 of the daily report."
+          },
+          "metric_057": {
+            "type": "number",
+            "description": "Measurement number 57 of the daily report."
+          },
+          "metric_058": {
+            "type": "number",
+            "description": "Measurement number 58 of the daily report."
+          },
+          "metric_059": {
+            "type": "number",
+            "description": "Measurement number 59 of the daily report."
+          },
+          "metric_060": {
+            "type": "number",
+            "description": "Measurement number 60 of the daily report."
+          },
+          "metric_061": {
+            "type": "number",
+            "description": "Measurement number 61 of the daily report."
+          },
+          "metric_062": {
+            "type": "number",
+            "description": "Measurement number 62 of the daily report."
+          },
+          "metric_063": {
+            "type": "number",
+            "description": "Measurement number 63 of the daily report."
+          },
+          "metric_064": {
+            "type": "number",
+            "description": "Measurement number 64 of the daily report."
+          },
+          "metric_065": {
+            "type": "number",
+            "description": "Measurement number 65 of the daily report."
+          },
+          "metric_066": {
+            "type": "number",
+            "description": "Measurement number 66 of the daily report."
+          },
+          "metric_067": {
+            "type": "number",
+            "description": "Measurement number 67 of the daily report."
+          },
+          "metric_068": {
+            "type": "number",
+            "description": "Measurement number 68 of the daily report."
+          },
+          "metric_069": {
+            "type": "number",
+            "description": "Measurement number 69 of the daily report."
+          },
+          "metric_070": {
+            "type": "number",
+            "description": "Measurement number 70 of the daily report."
+          },
+          "metric_071": {
+            "type": "number",
+            "description": "Measurement number 71 of the daily report."
+          },
+          "metric_072": {
+            "type": "number",
+            "description": "Measurement number 72 of the daily report."
+          },
+          "metric_073": {
+            "type": "number",
+            "description": "Measurement number 73 of the daily report."
+          },
+          "metric_074": {
+            "type": "number",
+            "description": "Measurement number 74 of the daily report."
+          },
+          "metric_075": {
+            "type": "number",
+            "description": "Measurement number 75 of the daily report."
+          },
+          "metric_076": {
+            "type": "number",
+            "description": "Measurement number 76 of the daily report."
+          },
+          "metric_077": {
+            "type": "number",
+            "description": "Measurement number 77 of the daily report."
+          },
+          "metric_078": {
+            "type": "number",
+            "description": "Measurement number 78 of the daily report."
+          },
+          "metric_079": {
+            "type": "number",
+            "description": "Measurement number 79 of the daily report."
+          },
+          "metric_080": {
+            "type": "number",
+            "description": "Measurement number 80 of the daily report."
+          },
+          "metric_081": {
+            "type": "number",
+            "description": "Measurement number 81 of the daily report."
+          },
+          "metric_082": {
+            "type": "number",
+            "description": "Measurement number 82 of the daily report."
+          },
+          "metric_083": {
+            "type": "number",
+            "description": "Measurement number 83 of the daily report."
+          },
+          "metric_084": {
+            "type": "number",
+            "description": "Measurement number 84 of the daily report."
+          },
+          "metric_085": {
+            "type": "number",
+            "description": "Measurement number 85 of the daily report."
+          },
+          "metric_086": {
+            "type": "number",
+            "description": "Measurement number 86 of the daily report."
+          },
+          "metric_087": {
+            "type": "number",
+            "description": "Measurement number 87 of the daily report."
+          },
+          "metric_088": {
+            "type": "number",
+            "description": "Measurement number 88 of the daily report."
+          },
+          "metric_089": {
+            "type": "number",
+            "description": "Measurement number 89 of the daily report."
+          },
+          "metric_090": {
+            "type": "number",
+            "description": "Measurement number 90 of the daily report."
+          },
+          "metric_091": {
+            "type": "number",
+            "description": "Measurement number 91 of the daily report."
+          },
+          "metric_092": {
+            "type": "number",
+            "description": "Measurement number 92 of the daily report."
+          },
+          "metric_093": {
+            "type": "number",
+            "description": "Measurement number 93 of the daily report."
+          },
+          "metric_094": {
+            "type": "number",
+            "description": "Measurement number 94 of the daily report."
+          },
+          "metric_095": {
+            "type": "number",
+            "description": "Measurement number 95 of the daily report."
+          },
+          "metric_096": {
+            "type": "number",
+            "description": "Measurement number 96 of the daily report."
+          },
+          "metric_097": {
+            "type": "number",
+            "description": "Measurement number 97 of the daily report."
+          },
+          "metric_098": {
+            "type": "number",
+            "description": "Measurement number 98 of the daily report."
+          },
+          "metric_099": {
+            "type": "number",
+            "description": "Measurement number 99 of the daily report."
+          },
+          "metric_100": {
+            "type": "number",
+            "description": "Measurement number 100 of the daily report."
+          },
+          "metric_101": {
+            "type": "number",
+            "description": "Measurement number 101 of the daily report."
+          },
+          "metric_102": {
+            "type": "number",
+            "description": "Measurement number 102 of the daily report."
+          },
+          "metric_103": {
+            "type": "number",
+            "description": "Measurement number 103 of the daily report."
+          },
+          "metric_104": {
+            "type": "number",
+            "description": "Measurement number 104 of the daily report."
+          },
+          "metric_105": {
+            "type": "number",
+            "description": "Measurement number 105 of the daily report."
+          },
+          "metric_106": {
+            "type": "number",
+            "description": "Measurement number 106 of the daily report."
+          },
+          "metric_107": {
+            "type": "number",
+            "description": "Measurement number 107 of the daily report."
+          },
+          "metric_108": {
+            "type": "number",
+            "description": "Measurement number 108 of the daily report."
+          },
+          "metric_109": {
+            "type": "number",
+            "description": "Measurement number 109 of the daily report."
+          },
+          "metric_110": {
+            "type": "number",
+            "description": "Measurement number 110 of the daily report."
+          },
+          "metric_111": {
+            "type": "number",
+            "description": "Measurement number 111 of the daily report."
+          },
+          "metric_112": {
+            "type": "number",
+            "description": "Measurement number 112 of the daily report."
+          },
+          "metric_113": {
+            "type": "number",
+            "description": "Measurement number 113 of the daily report."
+          },
+          "metric_114": {
+            "type": "number",
+            "description": "Measurement number 114 of the daily report."
+          },
+          "metric_115": {
+            "type": "number",
+            "description": "Measurement number 115 of the daily report."
+          },
+          "metric_116": {
+            "type": "number",
+            "description": "Measurement number 116 of the daily report."
+          },
+          "metric_117": {
+            "type": "number",
+            "description": "Measurement number 117 of the daily report."
+          },
+          "metric_118": {
+            "type": "number",
+            "description": "Measurement number 118 of the daily report."
+          },
+          "metric_119": {
+            "type": "number",
+            "description": "Measurement number 119 of the daily report."
+          },
+          "metric_120": {
+            "type": "number",
+            "description": "Measurement number 120 of the daily report."
+          },
+          "metric_121": {
+            "type": "number",
+            "description": "Measurement number 121 of the daily report."
+          },
+          "metric_122": {
+            "type": "number",
+            "description": "Measurement number 122 of the daily report."
+          },
+          "metric_123": {
+            "type": "number",
+            "description": "Measurement number 123 of the daily report."
+          },
+          "metric_124": {
+            "type": "number",
+            "description": "Measurement number 124 of the daily report."
+          },
+          "metric_125": {
+            "type": "number",
+            "description": "Measurement number 125 of the daily report."
+          },
+          "metric_126": {
+            "type": "number",
+            "description": "Measurement number 126 of the daily report."
+          },
+          "metric_127": {
+            "type": "number",
+            "description": "Measurement number 127 of the daily report."
+          },
+          "metric_128": {
+            "type": "number",
+            "description": "Measurement number 128 of the daily report."
+          },
+          "metric_129": {
+            "type": "number",
+            "description": "Measurement number 129 of the daily report."
+          },
+          "metric_130": {
+            "type": "number",
+            "description": "Measurement number 130 of the daily report."
+          },
+          "metric_131": {
+            "type": "number",
+            "description": "Measurement number 131 of the daily report."
+          },
+          "metric_132": {
+            "type": "number",
+            "description": "Measurement number 132 of the daily report."
+          },
+          "metric_133": {
+            "type": "number",
+            "description": "Measurement number 133 of the daily report."
+          },
+          "metric_134": {
+            "type": "number",
+            "description": "Measurement number 134 of the daily report."
+          },
+          "metric_135": {
+            "type": "number",
+            "description": "Measurement number 135 of the daily report."
+          },
+          "metric_136": {
+            "type": "number",
+            "description": "Measurement number 136 of the daily report."
+          },
+          "metric_137": {
+            "type": "number",
+            "description": "Measurement number 137 of the daily report."
+          },
+          "metric_138": {
+            "type": "number",
+            "description": "Measurement number 138 of the daily report."
+          },
+          "metric_139": {
+            "type": "number",
+            "description": "Measurement number 139 of the daily report."
+          },
+          "metric_140": {
+            "type": "number",
+            "description": "Measurement number 140 of the daily report."
+          },
+          "metric_141": {
+            "type": "number",
+            "description": "Measurement number 141 of the daily report."
+          },
+          "metric_142": {
+            "type": "number",
+            "description": "Measurement number 142 of the daily report."
+          },
+          "metric_143": {
+            "type": "number",
+            "description": "Measurement number 143 of the daily report."
+          },
+          "metric_144": {
+            "type": "number",
+            "description": "Measurement number 144 of the daily report."
+          },
+          "metric_145": {
+            "type": "number",
+            "description": "Measurement number 145 of the daily report."
+          },
+          "metric_146": {
+            "type": "number",
+            "description": "Measurement number 146 of the daily report."
+          },
+          "metric_147": {
+            "type": "number",
+            "description": "Measurement number 147 of the daily report."
+          },
+          "metric_148": {
+            "type": "number",
+            "description": "Measurement number 148 of the daily report."
+          },
+          "metric_149": {
+            "type": "number",
+            "description": "Measurement number 149 of the daily report."
+          },
+          "metric_150": {
+            "type": "number",
+            "description": "Measurement number 150 of the daily report."
+          },
+          "metric_151": {
+            "type": "number",
+            "description": "Measurement number 151 of the daily report."
+          },
+          "metric_152": {
+            "type": "number",
+            "description": "Measurement number 152 of the daily report."
+          },
+          "metric_153": {
+            "type": "number",
+            "description": "Measurement number 153 of the daily report."
+          },
+          "metric_154": {
+            "type": "number",
+            "description": "Measurement number 154 of the daily report."
+          },
+          "metric_155": {
+            "type": "number",
+            "description": "Measurement number 155 of the daily report."
+          },
+          "metric_156": {
+            "type": "number",
+            "description": "Measurement number 156 of the daily report."
+          },
+          "metric_157": {
+            "type": "number",
+            "description": "Measurement number 157 of the daily report."
+          },
+          "metric_158": {
+            "type": "number",
+            "description": "Measurement number 158 of the daily report."
+          },
+          "metric_159": {
+            "type": "number",
+            "description": "Measurement number 159 of the daily report."
+          },
+          "metric_160": {
+            "type": "number",
+            "description": "Measurement number 160 of the daily report."
+          },
+          "metric_161": {
+            "type": "number",
+            "description": "Measurement number 161 of the daily report."
+          },
+          "metric_162": {
+            "type": "number",
+            "description": "Measurement number 162 of the daily report."
+          },
+          "metric_163": {
+            "type": "number",
+            "description": "Measurement number 163 of the daily report."
+          },
+          "metric_164": {
+            "type": "number",
+            "description": "Measurement number 164 of the daily report."
+          },
+          "metric_165": {
+            "type": "number",
+            "description": "Measurement number 165 of the daily report."
+          },
+          "metric_166": {
+            "type": "number",
+            "description": "Measurement number 166 of the daily report."
+          },
+          "metric_167": {
+            "type": "number",
+            "description": "Measurement number 167 of the daily report."
+          },
+          "metric_168": {
+            "type": "number",
+            "description": "Measurement number 168 of the daily report."
+          },
+          "metric_169": {
+            "type": "number",
+            "description": "Measurement number 169 of the daily report."
+          },
+          "metric_170": {
+            "type": "number",
+            "description": "Measurement number 170 of the daily report."
+          },
+          "metric_171": {
+            "type": "number",
+            "description": "Measurement number 171 of the daily report."
+          },
+          "metric_172": {
+            "type": "number",
+            "description": "Measurement number 172 of the daily report."
+          },
+          "metric_173": {
+            "type": "number",
+            "description": "Measurement number 173 of the daily report."
+          },
+          "metric_174": {
+            "type": "number",
+            "description": "Measurement number 174 of the daily report."
+          },
+          "metric_175": {
+            "type": "number",
+            "description": "Measurement number 175 of the daily report."
+          },
+          "metric_176": {
+            "type": "number",
+            "description": "Measurement number 176 of the daily report."
+          },
+          "metric_177": {
+            "type": "number",
+            "description": "Measurement number 177 of the daily report."
+          },
+          "metric_178": {
+            "type": "number",
+            "description": "Measurement number 178 of the daily report."
+          },
+          "metric_179": {
+            "type": "number",
+            "description": "Measurement number 179 of the daily report."
+          },
+          "metric_180": {
+            "type": "number",
+            "description": "Measurement number 180 of the daily report."
+          },
+          "metric_181": {
+            "type": "number",
+            "description": "Measurement number 181 of the daily report."
+          },
+          "metric_182": {
+            "type": "number",
+            "description": "Measurement number 182 of the daily report."
+          },
+          "metric_183": {
+            "type": "number",
+            "description": "Measurement number 183 of the daily report."
+          },
+          "metric_184": {
+            "type": "number",
+            "description": "Measurement number 184 of the daily report."
+          },
+          "metric_185": {
+            "type": "number",
+            "description": "Measurement number 185 of the daily report."
+          },
+          "metric_186": {
+            "type": "number",
+            "description": "Measurement number 186 of the daily report."
+          },
+          "metric_187": {
+            "type": "number",
+            "description": "Measurement number 187 of the daily report."
+          },
+          "metric_188": {
+            "type": "number",
+            "description": "Measurement number 188 of the daily report."
+          },
+          "metric_189": {
+            "type": "number",
+            "description": "Measurement number 189 of the daily report."
+          },
+          "metric_190": {
+            "type": "number",
+            "description": "Measurement number 190 of the daily report."
+          },
+          "metric_191": {
+            "type": "number",
+            "description": "Measurement number 191 of the daily report."
+          },
+          "metric_192": {
+            "type": "number",
+            "description": "Measurement number 192 of the daily report."
+          },
+          "metric_193": {
+            "type": "number",
+            "description": "Measurement number 193 of the daily report."
+          },
+          "metric_194": {
+            "type": "number",
+            "description": "Measurement number 194 of the daily report."
+          },
+          "metric_195": {
+            "type": "number",
+            "description": "Measurement number 195 of the daily report."
+          },
+          "metric_196": {
+            "type": "number",
+            "description": "Measurement number 196 of the daily report."
+          },
+          "metric_197": {
+            "type": "number",
+            "description": "Measurement number 197 of the daily report."
+          },
+          "metric_198": {
+            "type": "number",
+            "description": "Measurement number 198 of the daily report."
+          },
+          "metric_199": {
+            "type": "number",
+            "description": "Measurement number 199 of the daily report."
+          },
+          "metric_200": {
+            "type": "number",
+            "description": "Measurement number 200 of the daily report."
+          },
+          "metric_201": {
+            "type": "number",
+            "description": "Measurement number 201 of the daily report."
+          },
+          "metric_202": {
+            "type": "number",
+            "description": "Measurement number 202 of the daily report."
+          },
+          "metric_203": {
+            "type": "number",
+            "description": "Measurement number 203 of the daily report."
+          },
+          "metric_204": {
+            "type": "number",
+            "description": "Measurement number 204 of the daily report."
+          },
+          "metric_205": {
+            "type": "number",
+            "description": "Measurement number 205 of the daily report."
+          },
+          "metric_206": {
+            "type": "number",
+            "description": "Measurement number 206 of the daily report."
+          },
+          "metric_207": {
+            "type": "number",
+            "description": "Measurement number 207 of the daily report."
+          },
+          "metric_208": {
+            "type": "number",
+            "description": "Measurement number 208 of the daily report."
+          },
+          "metric_209": {
+            "type": "number",
+            "description": "Measurement number 209 of the daily report."
+          },
+          "metric_210": {
+            "type": "number",
+            "description": "Measurement number 210 of the daily report."
+          },
+          "metric_211": {
+            "type": "number",
+            "description": "Measurement number 211 of the daily report."
+          },
+          "metric_212": {
+            "type": "number",
+            "description": "Measurement number 212 of the daily report."
+          },
+          "metric_213": {
+            "type": "number",
+            "description": "Measurement number 213 of the daily report."
+          },
+          "metric_214": {
+            "type": "number",
+            "description": "Measurement number 214 of the daily report."
+          },
+          "metric_215": {
+            "type": "number",
+            "description": "Measurement number 215 of the daily report."
+          },
+          "metric_216": {
+            "type": "number",
+            "description": "Measurement number 216 of the daily report."
+          },
+          "metric_217": {
+            "type": "number",
+            "description": "Measurement number 217 of the daily report."
+          },
+          "metric_218": {
+            "type": "number",
+            "description": "Measurement number 218 of the daily report."
+          },
+          "metric_219": {
+            "type": "number",
+            "description": "Measurement number 219 of the daily report."
+          },
+          "metric_220": {
+            "type": "number",
+            "description": "Measurement number 220 of the daily report."
+          },
+          "metric_221": {
+            "type": "number",
+            "description": "Measurement number 221 of the daily report."
+          },
+          "metric_222": {
+            "type": "number",
+            "description": "Measurement number 222 of the daily report."
+          },
+          "metric_223": {
+            "type": "number",
+            "description": "Measurement number 223 of the daily report."
+          },
+          "metric_224": {
+            "type": "number",
+            "description": "Measurement number 224 of the daily report."
+          },
+          "metric_225": {
+            "type": "number",
+            "description": "Measurement number 225 of the daily report."
+          },
+          "metric_226": {
+            "type": "number",
+            "description": "Measurement number 226 of the daily report."
+          },
+          "metric_227": {
+            "type": "number",
+            "description": "Measurement number 227 of the daily report."
+          },
+          "metric_228": {
+            "type": "number",
+            "description": "Measurement number 228 of the daily report."
+          },
+          "metric_229": {
+            "type": "number",
+            "description": "Measurement number 229 of the daily report."
+          },
+          "metric_230": {
+            "type": "number",
+            "description": "Measurement number 230 of the daily report."
+          },
+          "metric_231": {
+            "type": "number",
+            "description": "Measurement number 231 of the daily report."
+          },
+          "metric_232": {
+            "type": "number",
+            "description": "Measurement number 232 of the daily report."
+          },
+          "metric_233": {
+            "type": "number",
+            "description": "Measurement number 233 of the daily report."
+          },
+          "metric_234": {
+            "type": "number",
+            "description": "Measurement number 234 of the daily report."
+          },
+          "metric_235": {
+            "type": "number",
+            "description": "Measurement number 235 of the daily report."
+          },
+          "metric_236": {
+            "type": "number",
+            "description": "Measurement number 236 of the daily report."
+          },
+          "metric_237": {
+            "type": "number",
+            "description": "Measurement number 237 of the daily report."
+          },
+          "metric_238": {
+            "type": "number",
+            "description": "Measurement number 238 of the daily report."
+          },
+          "metric_239": {
+            "type": "number",
+            "description": "Measurement number 239 of the daily report."
+          },
+          "metric_240": {
+            "type": "number",
+            "description": "Measurement number 240 of the daily report."
+          },
+          "metric_241": {
+            "type": "number",
+            "description": "Measurement number 241 of the daily report."
+          },
+          "metric_242": {
+            "type": "number",
+            "description": "Measurement number 242 of the daily report."
+          },
+          "metric_243": {
+            "type": "number",
+            "description": "Measurement number 243 of the daily report."
+          },
+          "metric_244": {
+            "type": "number",
+            "description": "Measurement number 244 of the daily report."
+          },
+          "metric_245": {
+            "type": "number",
+            "description": "Measurement number 245 of the daily report."
+          },
+          "metric_246": {
+            "type": "number",
+            "description": "Measurement number 246 of the daily report."
+          },
+          "metric_247": {
+            "type": "number",
+            "description": "Measurement number 247 of the daily report."
+          },
+          "metric_248": {
+            "type": "number",
+            "description": "Measurement number 248 of the daily report."
+          },
+          "metric_249": {
+            "type": "number",
+            "description": "Measurement number 249 of the daily report."
+          },
+          "metric_250": {
+            "type": "number",
+            "description": "Measurement number 250 of the daily report."
+          },
+          "metric_251": {
+            "type": "number",
+            "description": "Measurement number 251 of the daily report."
+          },
+          "metric_252": {
+            "type": "number",
+            "description": "Measurement number 252 of the daily report."
+          },
+          "metric_253": {
+            "type": "number",
+            "description": "Measurement number 253 of the daily report."
+          },
+          "metric_254": {
+            "type": "number",
+            "description": "Measurement number 254 of the daily report."
+          },
+          "metric_255": {
+            "type": "number",
+            "description": "Measurement number 255 of the daily report."
+          },
+          "metric_256": {
+            "type": "number",
+            "description": "Measurement number 256 of the daily report."
+          },
+          "metric_257": {
+            "type": "number",
+            "description": "Measurement number 257 of the daily report."
+          },
+          "metric_258": {
+            "type": "number",
+            "description": "Measurement number 258 of the daily report."
+          },
+          "metric_259": {
+            "type": "number",
+            "description": "Measurement number 259 of the daily report."
+          },
+          "metric_260": {
+            "type": "number",
+            "description": "Measurement number 260 of the daily report."
+          },
+          "metric_261": {
+            "type": "number",
+            "description": "Measurement number 261 of the daily report."
+          },
+          "metric_262": {
+            "type": "number",
+            "description": "Measurement number 262 of the daily report."
+          },
+          "metric_263": {
+            "type": "number",
+            "description": "Measurement number 263 of the daily report."
+          },
+          "metric_264": {
+            "type": "number",
+            "description": "Measurement number 264 of the daily report."
+          },
+          "metric_265": {
+            "type": "number",
+            "description": "Measurement number 265 of the daily report."
+          },
+          "metric_266": {
+            "type": "number",
+            "description": "Measurement number 266 of the daily report."
+          },
+          "metric_267": {
+            "type": "number",
+            "description": "Measurement number 267 of the daily report."
+          },
+          "metric_268": {
+            "type": "number",
+            "description": "Measurement number 268 of the daily report."
+          },
+          "metric_269": {
+            "type": "number",
+            "description": "Measurement number 269 of the daily report."
+          },
+          "metric_270": {
+            "type": "number",
+            "description": "Measurement number 270 of the daily report."
+          },
+          "metric_271": {
+            "type": "number",
+            "description": "Measurement number 271 of the daily report."
+          },
+          "metric_272": {
+            "type": "number",
+            "description": "Measurement number 272 of the daily report."
+          },
+          "metric_273": {
+            "type": "number",
+            "description": "Measurement number 273 of the daily report."
+          },
+          "metric_274": {
+            "type": "number",
+            "description": "Measurement number 274 of the daily report."
+          },
+          "metric_275": {
+            "type": "number",
+            "description": "Measurement number 275 of the daily report."
+          },
+          "metric_276": {
+            "type": "number",
+            "description": "Measurement number 276 of the daily report."
+          },
+          "metric_277": {
+            "type": "number",
+            "description": "Measurement number 277 of the daily report."
+          },
+          "metric_278": {
+            "type": "number",
+            "description": "Measurement number 278 of the daily report."
+          },
+          "metric_279": {
+            "type": "number",
+            "description": "Measurement number 279 of the daily report."
+          },
+          "metric_280": {
+            "type": "number",
+            "description": "Measurement number 280 of the daily report."
+          },
+          "metric_281": {
+            "type": "number",
+            "description": "Measurement number 281 of the daily report."
+          },
+          "metric_282": {
+            "type": "number",
+            "description": "Measurement number 282 of the daily report."
+          },
+          "metric_283": {
+            "type": "number",
+            "description": "Measurement number 283 of the daily report."
+          },
+          "metric_284": {
+            "type": "number",
+            "description": "Measurement number 284 of the daily report."
+          },
+          "metric_285": {
+            "type": "number",
+            "description": "Measurement number 285 of the daily report."
+          },
+          "metric_286": {
+            "type": "number",
+            "description": "Measurement number 286 of the daily report."
+          },
+          "metric_287": {
+            "type": "number",
+            "description": "Measurement number 287 of the daily report."
+          },
+          "metric_288": {
+            "type": "number",
+            "description": "Measurement number 288 of the daily report."
+          },
+          "metric_289": {
+            "type": "number",
+            "description": "Measurement number 289 of the daily report."
+          },
+          "metric_290": {
+            "type": "number",
+            "description": "Measurement number 290 of the daily report."
+          },
+          "metric_291": {
+            "type": "number",
+            "description": "Measurement number 291 of the daily report."
+          },
+          "metric_292": {
+            "type": "number",
+            "description": "Measurement number 292 of the daily report."
+          },
+          "metric_293": {
+            "type": "number",
+            "description": "Measurement number 293 of the daily report."
+          },
+          "metric_294": {
+            "type": "number",
+            "description": "Measurement number 294 of the daily report."
+          },
+          "metric_295": {
+            "type": "number",
+            "description": "Measurement number 295 of the daily report."
+          },
+          "metric_296": {
+            "type": "number",
+            "description": "Measurement number 296 of the daily report."
+          },
+          "metric_297": {
+            "type": "number",
+            "description": "Measurement number 297 of the daily report."
+          },
+          "metric_298": {
+            "type": "number",
+            "description": "Measurement number 298 of the daily report."
+          },
+          "metric_299": {
+            "type": "number",
+            "description": "Measurement number 299 of the daily report."
+          },
+          "metric_300": {
+            "type": "number",
+            "description": "Measurement number 300 of the daily report."
+          },
+          "metric_301": {
+            "type": "number",
+            "description": "Measurement number 301 of the daily report."
+          },
+          "metric_302": {
+            "type": "number",
+            "description": "Measurement number 302 of the daily report."
+          },
+          "metric_303": {
+            "type": "number",
+            "description": "Measurement number 303 of the daily report."
+          },
+          "metric_304": {
+            "type": "number",
+            "description": "Measurement number 304 of the daily report."
+          },
+          "metric_305": {
+            "type": "number",
+            "description": "Measurement number 305 of the daily report."
+          },
+          "metric_306": {
+            "type": "number",
+            "description": "Measurement number 306 of the daily report."
+          },
+          "metric_307": {
+            "type": "number",
+            "description": "Measurement number 307 of the daily report."
+          },
+          "metric_308": {
+            "type": "number",
+            "description": "Measurement number 308 of the daily report."
+          },
+          "metric_309": {
+            "type": "number",
+            "description": "Measurement number 309 of the daily report."
+          },
+          "metric_310": {
+            "type": "number",
+            "description": "Measurement number 310 of the daily report."
+          },
+          "metric_311": {
+            "type": "number",
+            "description": "Measurement number 311 of the daily report."
+          },
+          "metric_312": {
+            "type": "number",
+            "description": "Measurement number 312 of the daily report."
+          },
+          "metric_313": {
+            "type": "number",
+            "description": "Measurement number 313 of the daily report."
+          },
+          "metric_314": {
+            "type": "number",
+            "description": "Measurement number 314 of the daily report."
+          },
+          "metric_315": {
+            "type": "number",
+            "description": "Measurement number 315 of the daily report."
+          },
+          "metric_316": {
+            "type": "number",
+            "description": "Measurement number 316 of the daily report."
+          },
+          "metric_317": {
+            "type": "number",
+            "description": "Measurement number 317 of the daily report."
+          },
+          "metric_318": {
+            "type": "number",
+            "description": "Measurement number 318 of the daily report."
+          },
+          "metric_319": {
+            "type": "number",
+            "description": "Measurement number 319 of the daily report."
+          },
+          "metric_320": {
+            "type": "number",
+            "description": "Measurement number 320 of the daily report."
+          },
+          "metric_321": {
+            "type": "number",
+            "description": "Measurement number 321 of the daily report."
+          },
+          "metric_322": {
+            "type": "number",
+            "description": "Measurement number 322 of the daily report."
+          },
+          "metric_323": {
+            "type": "number",
+            "description": "Measurement number 323 of the daily report."
+          },
+          "metric_324": {
+            "type": "number",
+            "description": "Measurement number 324 of the daily report."
+          },
+          "metric_325": {
+            "type": "number",
+            "description": "Measurement number 325 of the daily report."
+          },
+          "metric_326": {
+            "type": "number",
+            "description": "Measurement number 326 of the daily report."
+          },
+          "metric_327": {
+            "type": "number",
+            "description": "Measurement number 327 of the daily report."
+          },
+          "metric_328": {
+            "type": "number",
+            "description": "Measurement number 328 of the daily report."
+          },
+          "metric_329": {
+            "type": "number",
+            "description": "Measurement number 329 of the daily report."
+          },
+          "metric_330": {
+            "type": "number",
+            "description": "Measurement number 330 of the daily report."
+          },
+          "metric_331": {
+            "type": "number",
+            "description": "Measurement number 331 of the daily report."
+          },
+          "metric_332": {
+            "type": "number",
+            "description": "Measurement number 332 of the daily report."
+          },
+          "metric_333": {
+            "type": "number",
+            "description": "Measurement number 333 of the daily report."
+          },
+          "metric_334": {
+            "type": "number",
+            "description": "Measurement number 334 of the daily report."
+          },
+          "metric_335": {
+            "type": "number",
+            "description": "Measurement number 335 of the daily report."
+          },
+          "metric_336": {
+            "type": "number",
+            "description": "Measurement number 336 of the daily report."
+          },
+          "metric_337": {
+            "type": "number",
+            "description": "Measurement number 337 of the daily report."
+          },
+          "metric_338": {
+            "type": "number",
+            "description": "Measurement number 338 of the daily report."
+          },
+          "metric_339": {
+            "type": "number",
+            "description": "Measurement number 339 of the daily report."
+          },
+          "metric_340": {
+            "type": "number",
+            "description": "Measurement number 340 of the daily report."
+          },
+          "metric_341": {
+            "type": "number",
+            "description": "Measurement number 341 of the daily report."
+          },
+          "metric_342": {
+            "type": "number",
+            "description": "Measurement number 342 of the daily report."
+          },
+          "metric_343": {
+            "type": "number",
+            "description": "Measurement number 343 of the daily report."
+          },
+          "metric_344": {
+            "type": "number",
+            "description": "Measurement number 344 of the daily report."
+          },
+          "metric_345": {
+            "type": "number",
+            "description": "Measurement number 345 of the daily report."
+          },
+          "metric_346": {
+            "type": "number",
+            "description": "Measurement number 346 of the daily report."
+          },
+          "metric_347": {
+            "type": "number",
+            "description": "Measurement number 347 of the daily report."
+          },
+          "metric_348": {
+            "type": "number",
+            "description": "Measurement number 348 of the daily report."
+          },
+          "metric_349": {
+            "type": "number",
+            "description": "Measurement number 349 of the daily report."
+          },
+          "metric_350": {
+            "type": "number",
+            "description": "Measurement number 350 of the daily report."
+          },
+          "metric_351": {
+            "type": "number",
+            "description": "Measurement number 351 of the daily report."
+          },
+          "metric_352": {
+            "type": "number",
+            "description": "Measurement number 352 of the daily report."
+          },
+          "metric_353": {
+            "type": "number",
+            "description": "Measurement number 353 of the daily report."
+          },
+          "metric_354": {
+            "type": "number",
+            "description": "Measurement number 354 of the daily report."
+          },
+          "metric_355": {
+            "type": "number",
+            "description": "Measurement number 355 of the daily report."
+          },
+          "metric_356": {
+            "type": "number",
+            "description": "Measurement number 356 of the daily report."
+          },
+          "metric_357": {
+            "type": "number",
+            "description": "Measurement number 357 of the daily report."
+          },
+          "metric_358": {
+            "type": "number",
+            "description": "Measurement number 358 of the daily report."
+          },
+          "metric_359": {
+            "type": "number",
+            "description": "Measurement number 359 of the daily report."
+          },
+          "metric_360": {
+            "type": "number",
+            "description": "Measurement number 360 of the daily report."
+          },
+          "metric_361": {
+            "type": "number",
+            "description": "Measurement number 361 of the daily report."
+          },
+          "metric_362": {
+            "type": "number",
+            "description": "Measurement number 362 of the daily report."
+          },
+          "metric_363": {
+            "type": "number",
+            "description": "Measurement number 363 of the daily report."
+          },
+          "metric_364": {
+            "type": "number",
+            "description": "Measurement number 364 of the daily report."
+          },
+          "metric_365": {
+            "type": "number",
+            "description": "Measurement number 365 of the daily report."
+          },
+          "metric_366": {
+            "type": "number",
+            "description": "Measurement number 366 of the daily report."
+          },
+          "metric_367": {
+            "type": "number",
+            "description": "Measurement number 367 of the daily report."
+          },
+          "metric_368": {
+            "type": "number",
+            "description": "Measurement number 368 of the daily report."
+          },
+          "metric_369": {
+            "type": "number",
+            "description": "Measurement number 369 of the daily report."
+          },
+          "metric_370": {
+            "type": "number",
+            "description": "Measurement number 370 of the daily report."
+          },
+          "metric_371": {
+            "type": "number",
+            "description": "Measurement number 371 of the daily report."
+          },
+          "metric_372": {
+            "type": "number",
+            "description": "Measurement number 372 of the daily report."
+          },
+          "metric_373": {
+            "type": "number",
+            "description": "Measurement number 373 of the daily report."
+          },
+          "metric_374": {
+            "type": "number",
+            "description": "Measurement number 374 of the daily report."
+          },
+          "metric_375": {
+            "type": "number",
+            "description": "Measurement number 375 of the daily report."
+          },
+          "metric_376": {
+            "type": "number",
+            "description": "Measurement number 376 of the daily report."
+          },
+          "metric_377": {
+            "type": "number",
+            "description": "Measurement number 377 of the daily report."
+          },
+          "metric_378": {
+            "type": "number",
+            "description": "Measurement number 378 of the daily report."
+          },
+          "metric_379": {
+            "type": "number",
+            "description": "Measurement number 379 of the daily report."
+          },
+          "metric_380": {
+            "type": "number",
+            "description": "Measurement number 380 of the daily report."
+          },
+          "metric_381": {
+            "type": "number",
+            "description": "Measurement number 381 of the daily report."
+          },
+          "metric_382": {
+            "type": "number",
+            "description": "Measurement number 382 of the daily report."
+          },
+          "metric_383": {
+            "type": "number",
+            "description": "Measurement number 383 of the daily report."
+          },
+          "metric_384": {
+            "type": "number",
+            "description": "Measurement number 384 of the daily report."
+          },
+          "metric_385": {
+            "type": "number",
+            "description": "Measurement number 385 of the daily report."
+          },
+          "metric_386": {
+            "type": "number",
+            "description": "Measurement number 386 of the daily report."
+          },
+          "metric_387": {
+            "type": "number",
+            "description": "Measurement number 387 of the daily report."
+          },
+          "metric_388": {
+            "type": "number",
+            "description": "Measurement number 388 of the daily report."
+          },
+          "metric_389": {
+            "type": "number",
+            "description": "Measurement number 389 of the daily report."
+          },
+          "metric_390": {
+            "type": "number",
+            "description": "Measurement number 390 of the daily report."
+          },
+          "metric_391": {
+            "type": "number",
+            "description": "Measurement number 391 of the daily report."
+          },
+          "metric_392": {
+            "type": "number",
+            "description": "Measurement number 392 of the daily report."
+          },
+          "metric_393": {
+            "type": "number",
+            "description": "Measurement number 393 of the daily report."
+          },
+          "metric_394": {
+            "type": "number",
+            "description": "Measurement number 394 of the daily report."
+          },
+          "metric_395": {
+            "type": "number",
+            "description": "Measurement number 395 of the daily report."
+          },
+          "metric_396": {
+            "type": "number",
+            "description": "Measurement number 396 of the daily report."
+          },
+          "metric_397": {
+            "type": "number",
+            "description": "Measurement number 397 of the daily report."
+          },
+          "metric_398": {
+            "type": "number",
+            "description": "Measurement number 398 of the daily report."
+          },
+          "metric_399": {
+            "type": "number",
+            "description": "Measurement number 399 of the daily report."
+          }
+        }
+      }
+    }
+  }
+}

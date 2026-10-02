@@ -25,6 +25,10 @@ MAX_TRIES = 5
 _RETRYABLE_CODES = {429, 500, 503}  # rate limited, or a transient server error
 _MAX_RETRY_DELAY = 120.0
 
+# Gemini embeds stored text and search questions slightly differently.
+DOCUMENT = "RETRIEVAL_DOCUMENT"
+QUERY = "RETRIEVAL_QUERY"
+
 
 class EmbeddingError(Exception):
     pass
@@ -56,7 +60,7 @@ class Embedder(ABC):
         """Names the model and dimension; stored with each vector so reuse never mixes models."""
 
     @abstractmethod
-    def _embed_batch(self, texts: list[str]) -> list[list[float]]: ...
+    def _embed_batch(self, texts: list[str], task: str = DOCUMENT) -> list[list[float]]: ...
 
     def _batches(self, texts: Sequence[str]) -> Iterator[list[str]]:
         batch: list[str] = []
@@ -74,17 +78,23 @@ class Embedder(ABC):
             yield batch
 
     def embed(self, texts: Sequence[str]) -> list[Vector]:
-        """Embed in batches; every returned vector has length `dim` and norm 1."""
+        """Embed chunks in batches; every returned vector has length `dim` and norm 1."""
         out: list[Vector] = []
         for batch in self._batches(texts):
-            raw = self._embed_batch(batch)
-            if len(raw) != len(batch):
-                raise EmbeddingError(f"asked for {len(batch)} embeddings, got {len(raw)}")
-            for values in raw:
-                if len(values) != self.dim:
-                    raise EmbeddingError(f"expected {self.dim} dims, got {len(values)}")
-                out.append(normalize(values))
+            out.extend(self._checked(batch, self._embed_batch(batch, DOCUMENT)))
         return out
+
+    def embed_query(self, query: str) -> Vector:
+        """Embed a search question (same model and dimension as the chunks, normalised)."""
+        return self._checked([query], self._embed_batch([query], QUERY))[0]
+
+    def _checked(self, batch: list[str], raw: list[list[float]]) -> list[Vector]:
+        if len(raw) != len(batch):
+            raise EmbeddingError(f"asked for {len(batch)} embeddings, got {len(raw)}")
+        for values in raw:
+            if len(values) != self.dim:
+                raise EmbeddingError(f"expected {self.dim} dims, got {len(values)}")
+        return [normalize(values) for values in raw]
 
 
 class FakeEmbedder(Embedder):
@@ -99,7 +109,7 @@ class FakeEmbedder(Embedder):
     def model_id(self) -> str:
         return f"fake:{self.dim}"
 
-    def _embed_batch(self, texts: list[str]) -> list[list[float]]:
+    def _embed_batch(self, texts: list[str], task: str = DOCUMENT) -> list[list[float]]:
         self.calls += 1
         self.texts_embedded += len(texts)
         out = []
@@ -181,10 +191,8 @@ class GeminiEmbedder(Embedder):
             self.sleep(wait)
         self._sent.append((self.clock(), tokens))
 
-    def _embed_batch(self, texts: list[str]) -> list[list[float]]:
-        config = types.EmbedContentConfig(
-            task_type="RETRIEVAL_DOCUMENT", output_dimensionality=self.dim
-        )
+    def _embed_batch(self, texts: list[str], task: str = DOCUMENT) -> list[list[float]]:
+        config = types.EmbedContentConfig(task_type=task, output_dimensionality=self.dim)
         tokens = sum(estimate_tokens(t) for t in texts)
         for attempt in range(1, MAX_TRIES + 1):
             self._wait_for_budget(tokens)
