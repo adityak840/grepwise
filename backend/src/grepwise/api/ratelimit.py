@@ -1,5 +1,5 @@
-"""In-memory rate limits: per client (a minute and a day cap) and one shared daily cap for the
-whole site. They protect the LLM quota.
+"""In-memory rate limits: per client (a minute and/or a day cap), and shared caps. They protect
+the LLM quota and the server.
 
 In memory is enough for one server process; limits reset when it restarts.
 """
@@ -17,10 +17,10 @@ class RateLimiter:
     def __init__(
         self,
         per_minute: int | None,
-        per_day: int,
+        per_day: int | None,
         clock: Callable[[], float] = time.monotonic,
     ):
-        self.limits = [(DAY, per_day)] + ([(MINUTE, per_minute)] if per_minute else [])
+        self.limits = [(w, n) for w, n in ((DAY, per_day), (MINUTE, per_minute)) if n]
         self.clock = clock
         self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()

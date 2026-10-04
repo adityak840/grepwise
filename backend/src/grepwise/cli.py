@@ -430,3 +430,18 @@ def runs(limit: Annotated[int, typer.Option("--limit", min=1, max=200)] = 10) ->
             f"{r['seconds'] or 0:.1f}s", r["error"] or "",
         )  # fmt: skip
     console.print(table)
+
+
+# --- MCP (M5) ----------------------------------------------------------------------------
+
+
+@app.command()
+def mcp(
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Log INFO to stderr")] = False,
+) -> None:
+    """Run the MCP server over stdio, for Claude Code, Cursor or Claude Desktop."""
+    from grepwise.mcp.stdio import serve_stdio
+
+    # stdout carries the protocol: logs go to stderr only, quietly unless --verbose.
+    logging.getLogger("grepwise").setLevel(logging.INFO if verbose else logging.WARNING)
+    serve_stdio(get_settings())

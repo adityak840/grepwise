@@ -1,5 +1,6 @@
 """The FastAPI app: POST /chat (SSE) and GET /health."""
 
+import contextlib
 import logging
 import threading
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -13,12 +14,16 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pgvector.psycopg import register_vector
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel, Field, model_validator
+from starlette.routing import Route
 
 from grepwise.agent.llm import LLMClient, make_llm
 from grepwise.agent.loop import run_agent
+from grepwise.api.clientip import client_ip
 from grepwise.api.ratelimit import RateLimiter
 from grepwise.config import Settings, get_settings
 from grepwise.ingest.embed import Embedder, LocalEmbedder, make_embedder
+from grepwise.mcp.http import MCPHttpApp
+from grepwise.mcp.server import build_server
 from grepwise.tools import ToolContext
 
 log = logging.getLogger(__name__)
@@ -83,12 +88,23 @@ def create_app(
             emb.embed_query("warm up")  # load the model once, at startup, not on a request
         state["embedder"] = emb
         try:
-            yield
+            async with mcp_http.manager.run():  # the MCP session manager lives with the app
+                yield
         finally:
             if own_pool:
                 state["pool"].close()  # type: ignore[attr-defined]
 
+    @contextlib.contextmanager
+    def mcp_context() -> Iterator[ToolContext]:
+        """Each MCP request: a pooled connection and the shared embedder."""
+        with state["pool"].connection() as conn:  # type: ignore[attr-defined]
+            yield ToolContext(conn, settings, state["embedder"])  # type: ignore[arg-type]
+
+    mcp_http = MCPHttpApp(build_server(mcp_context), settings)
+
     app = FastAPI(title="Grepwise", lifespan=lifespan)
+    # A plain route (not a Mount), so POST /mcp isn't redirected to /mcp/.
+    app.router.routes.append(Route("/mcp", mcp_http))
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.origins,
@@ -100,15 +116,8 @@ def create_app(
     new_llm = llm_factory or (lambda: make_llm(settings.llm()))
     limits_lock = threading.Lock()
 
-    def client_ip(request: Request) -> str:
-        forwarded = request.headers.get("x-forwarded-for")
-        if settings.trust_proxy_headers and forwarded:
-            # The proxy appends the address it saw; entries before it came from the client and
-            # can be anything. So the right-most entry is the only trustworthy one.
-            entries = [e.strip() for e in forwarded.split(",") if e.strip()]
-            if entries:
-                return entries[-1]
-        return request.client.host if request.client else "unknown"
+    def ip_of(request: Request) -> str:
+        return client_ip(request, settings.trust_proxy_headers)
 
     @app.get("/health")
     def health() -> dict[str, object]:
@@ -125,7 +134,7 @@ def create_app(
 
     @app.post("/chat", response_model=None)
     def chat(
-        body: ChatRequest, ip: Annotated[str, Depends(client_ip)]
+        body: ChatRequest, ip: Annotated[str, Depends(ip_of)]
     ) -> StreamingResponse | JSONResponse:
         # Check both limits before counting either, so a rejected request uses up neither.
         with limits_lock:

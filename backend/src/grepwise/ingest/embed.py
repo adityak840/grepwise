@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import re
+import threading
 import time
 from abc import ABC, abstractmethod
 from collections import deque
@@ -172,6 +173,7 @@ class LocalEmbedder(Embedder):
         self.threads = threads
         self._factory = model_factory or self._load_fastembed
         self._model: LocalModel | None = None
+        self._load_lock = threading.Lock()
         self._prefixes = next(
             (p for key, p in _PREFIXES.items() if model.startswith(key)), {DOCUMENT: "", QUERY: ""}
         )
@@ -195,7 +197,9 @@ class LocalEmbedder(Embedder):
     @property
     def model(self) -> LocalModel:
         if self._model is None:
-            self._model = self._factory()
+            with self._load_lock:  # a warm-up and a first query may race to load it
+                if self._model is None:
+                    self._model = self._factory()
         return self._model
 
     def _embed_batch(self, texts: list[str], task: str = DOCUMENT) -> list[list[float]]:

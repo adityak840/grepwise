@@ -2,7 +2,7 @@
 
 Ask questions about any codebase, library docs or API, and get answers with exact, verifiable citations. Use it in the browser, or plug it into Claude Code / Cursor as an MCP server.
 
-**Status:** M4 (agent, streaming answers, checked citations) built. See [docs/spec/00-overview.md](docs/spec/00-overview.md) for the plan.
+**Status:** M5 (MCP server) built. See [docs/spec/00-overview.md](docs/spec/00-overview.md) for the plan.
 
 ## Local setup
 
@@ -59,6 +59,58 @@ uv run grepwise serve                      # POST /chat (SSE) and GET /health on
 
 For `--provider ollama`, run `make ollama` once: it builds `grepwise-qwen3.5`, qwen3.5:9b with
 a 16k context (Ollama's 4k default silently cuts off agent prompts).
+
+## Use with Claude Code / Cursor
+
+Grepwise is also an MCP server: your editor's own model calls Grepwise's tools (`list_sources`,
+`search`, `read_file`, `find_symbol`, `get_endpoint`, `verify_citation`). No LLM key needed.
+
+### Local (stdio)
+
+Start the database and index something first (see above). Then:
+
+**Claude Code**
+
+```bash
+claude mcp add grepwise -- uv run --directory /path/to/grepwise/backend grepwise mcp
+```
+
+**Cursor** (`~/.cursor/mcp.json`) or **Claude Desktop** (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "grepwise": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/grepwise/backend", "grepwise", "mcp"]
+    }
+  }
+}
+```
+
+### Remote (Streamable HTTP)
+
+`grepwise serve` also serves MCP at `/mcp`. Anonymous use is rate limited per IP; a key from
+`MCP_API_KEYS` gets a higher limit:
+
+```bash
+claude mcp add --transport http grepwise https://<your-api-host>/mcp
+claude mcp add --transport http grepwise https://<your-api-host>/mcp \
+    --header "Authorization: Bearer <key>"
+```
+
+In production, add the API's hostname to `MCP_ALLOWED_HOSTS`.
+
+### Try it
+
+- *"Using grepwise, how do I make an option required in Typer? Cite your sources."*
+- *"Using grepwise, what does GET /pet/{petId} return?"*
+- *"Using grepwise, how does itsdangerous's TimestampSigner check expiry?"*
+
+A good answer cites exact lines, like
+`fastapi/typer@0.27.2:docs/tutorial/options/required.md:L1-L74`, which you can check with
+`grepwise verify "<citation>"` (or the `verify_citation` tool). The `answer_with_citations`
+prompt gives the model these instructions.
 
 ## Development
 

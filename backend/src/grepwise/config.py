@@ -61,6 +61,16 @@ class Settings(BaseSettings):
     # Shared by every visitor; keep it safely under the LLM's real daily allowance.
     chat_global_per_day: int = 100
     allowed_origins: str = "http://localhost:3000"  # comma-separated
+    # MCP over HTTP (/mcp): anonymous use is limited per client IP; MCP_API_KEYS (comma-separated
+    # bearer keys) get a higher per-minute limit and no daily cap.
+    mcp_rate_per_minute: int = 30
+    mcp_rate_per_day: int = 1_000
+    mcp_api_keys: SecretStr = SecretStr("")
+    mcp_key_rate_per_minute: int = 120
+    # Host headers /mcp accepts (DNS-rebinding protection). Add the deployed host, e.g.
+    # "grepwise-api.onrender.com", in production.
+    mcp_allowed_hosts: str = "127.0.0.1:*,localhost:*,[::1]:*"
+
     # Behind a proxy (Render), the client IP is in X-Forwarded-For. Only trust it there.
     trust_proxy_headers: bool = False
 

@@ -12,6 +12,7 @@ dependencies = [
     "google-genai>=2.27.0",
     "httpx>=0.28.1",
     "markdown-it-py>=4.2.0",
+    "mcp>=2.3.0",
     "numpy>=2.5.3",
     "openai>=3.23.0",
     "pgvector>=0.5.0",
