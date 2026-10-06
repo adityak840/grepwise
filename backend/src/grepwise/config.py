@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     # none for Ollama (qwen's "thinking" is slow and leaks into answers), unset for Gemini.
     llm_reasoning_effort: str = ""
     agent_max_steps: int = 8
+    hosted_max_steps: int = 5  # for /chat; each step is one LLM request on a shared quota
     agent_max_input_tokens: int = 60_000
     # Tool calls run per model reply; extra calls get an error result. Stops a confused model
     # from flooding the next request (and a 16k local context) with results.
@@ -61,6 +62,9 @@ class Settings(BaseSettings):
     # Shared by every visitor; keep it safely under the LLM's real daily allowance.
     chat_global_per_day: int = 100
     allowed_origins: str = "http://localhost:3000"  # comma-separated
+    # Phase 6.2's report, served by GET /api/evals.
+    eval_report_path: Path = REPO_ROOT / "evals" / "results" / "latest.json"
+
     # MCP over HTTP (/mcp): anonymous use is limited per client IP; MCP_API_KEYS (comma-separated
     # bearer keys) get a higher per-minute limit and no daily cap.
     mcp_rate_per_minute: int = 30

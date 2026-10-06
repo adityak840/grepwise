@@ -98,6 +98,14 @@ def _short_message(exc: openai.APIStatusError) -> str:
     return message.strip().splitlines()[0][:300]
 
 
+def _is_bad_key(exc: openai.APIStatusError) -> bool:
+    """Gemini answers a bad key with 400 API_KEY_INVALID; others use 401 or 403."""
+    if exc.status_code in (401, 403):
+        return True
+    text = f"{exc.message} {exc.body}".lower()
+    return exc.status_code == 400 and ("api_key_invalid" in text or "api key not valid" in text)
+
+
 def _is_daily_quota(exc: openai.APIStatusError) -> bool:
     text = f"{exc.message} {exc.body}".lower()
     return "perday" in text or "per day" in text or "daily" in text
@@ -153,6 +161,10 @@ class OpenAICompatibleClient:
                     raise LLMError(
                         "quota_exhausted",
                         f"The {self.provider} daily quota is used up; try again tomorrow.",
+                    ) from None
+                if _is_bad_key(exc):
+                    raise LLMError(
+                        "invalid_key", f"The {self.provider} API key was rejected."
                     ) from None
                 retryable = exc.status_code == 429 or exc.status_code >= 500
                 if not retryable or attempt == len(RETRY_DELAYS):

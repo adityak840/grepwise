@@ -1,0 +1,88 @@
+# Grepwise eval questions (phase 6.2). See docs/spec/06-ui-evals-launch.md, section 6.
+#
+# Sources these questions assume are indexed (all pinned):
+#   pallets/itsdangerous@2.2.0   repo  (grepwise index https://github.com/pallets/itsdangerous --ref 2.2.0)
+#   fastapi/typer@0.27.2         docs  (grepwise index-docs https://github.com/fastapi/typer --ref 0.27.2 --path docs)
+#   fastapi/typer@0.27.2         repo  (grepwise index https://github.com/fastapi/typer --ref 0.27.2)  <- needed for cross-source
+#   petstore@1.0.27              openapi
+#
+# How to write a question:
+#   1. Open the real file (grepwise read ... or GitHub at the tag) and find a specific answer.
+#   2. Ask it the way a developer would, without copying the file's wording (that would make
+#      keyword search look better than it is).
+#   3. expect.paths: files a correct answer must cite (any one of them). For cross-source
+#      questions use expect.paths_all: every listed file must be cited.
+#   4. expect.facts: short phrases a correct answer must contain (case-insensitive). Prefer
+#      specific names (SignatureExpired) over common words.
+#   5. Unanswerable questions: expect: {absent: true}. The right answer says it isn't in the sources.
+#
+# Target: ~20 code, ~15 docs, ~5 api, ~10 cross, plus a few absent.
+#
+# The six below are DRAFTS written by Claude after reading the files (2026-10-06).
+# Check each one yourself, then remove its "draft: true" line.
+
+- id: code-01
+  draft: true
+  category: code
+  question: How does TimestampSigner decide that a signature has expired?
+  sources: [pallets/itsdangerous@2.2.0]
+  expect:
+    paths: [src/itsdangerous/timed.py]
+    symbols: [TimestampSigner]
+    # unsign() compares (now - signed timestamp) with max_age and raises SignatureExpired
+    # if it's older (or if the age is negative, i.e. signed in the future).
+    facts: [max_age, SignatureExpired]
+
+- id: code-02
+  draft: true
+  category: code
+  question: What ways can Signer derive its signing key from the secret, and which one is the default?
+  sources: [pallets/itsdangerous@2.2.0]
+  expect:
+    paths: [src/itsdangerous/signer.py]
+    symbols: [Signer]
+    # Signer's docstring: key_derivation can be concat, django-concat or hmac; default django-concat.
+    facts: [django-concat, hmac]
+
+- id: docs-01
+  draft: true
+  category: docs
+  question: In Typer, how do I make a CLI option mandatory instead of optional?
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths: [docs/tutorial/options/required.md]
+    # Put typer.Option() inside Annotated and give the parameter no default
+    # (or the older style: typer.Option(default=...)).
+    facts: [Annotated, typer.Option]
+
+- id: api-01
+  draft: true
+  category: api
+  question: What status codes can GET /pet/{petId} return in the Petstore API, and what do they mean?
+  sources: [petstore@1.0.27]
+  expect:
+    paths: ["GET /pet/{petId}"]
+    # 200 successful operation (a Pet), 400 invalid ID supplied, 404 pet not found.
+    facts: ["200", "400", "404"]
+
+- id: cross-01
+  draft: true
+  category: cross
+  # The docs page only includes the example with {* docs_src/... *}, so the code itself lives in
+  # the repo: answering needs both the docs and the code.
+  question: Show me the example code Typer's docs use to make --lastname a required option, and explain why it's required.
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths_all:
+      - docs/tutorial/options/required.md
+      - docs_src/options/required/tutorial001_an_py310.py
+    facts: [Annotated, typer.Option, lastname]
+
+- id: absent-01
+  draft: true
+  category: code
+  # itsdangerous signs and serializes data; it has no rate limiting.
+  question: How do I configure rate limiting in itsdangerous?
+  sources: [pallets/itsdangerous@2.2.0]
+  expect:
+    absent: true

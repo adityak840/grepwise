@@ -14,6 +14,7 @@ __pycache__/
 # Node
 node_modules/
 .next/
+*.tsbuildinfo
 
 # OS / editor
 .DS_Store

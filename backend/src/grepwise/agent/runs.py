@@ -21,19 +21,21 @@ class RunRecord:
     output_tokens: int = 0
     seconds: float = 0.0
     error: str | None = None
+    byo_key: bool = False  # the visitor's own Gemini key was used (the key is never stored)
 
 
 def save_run(conn: psycopg.Connection, run: RunRecord) -> int:
     row = conn.execute(
         """
         INSERT INTO agent_runs (question, provider, model, prompt_version, steps, answer,
-                                citations, grounded, input_tokens, output_tokens, seconds, error)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+                                citations, grounded, input_tokens, output_tokens, seconds, error,
+                                byo_key)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
         """,
         (
             run.question, run.provider, run.model, run.prompt_version, Jsonb(run.steps),
             run.answer, Jsonb(run.citations), run.grounded, run.input_tokens,
-            run.output_tokens, run.seconds, run.error,
+            run.output_tokens, run.seconds, run.error, run.byo_key,
         ),
     ).fetchone()  # fmt: skip
     assert row is not None

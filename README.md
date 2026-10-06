@@ -2,7 +2,7 @@
 
 Ask questions about any codebase, library docs or API, and get answers with exact, verifiable citations. Use it in the browser, or plug it into Claude Code / Cursor as an MCP server.
 
-**Status:** M5 (MCP server) built. See [docs/spec/00-overview.md](docs/spec/00-overview.md) for the plan.
+**Status:** M6 phase 6.1 (web UI) built. See [docs/spec/00-overview.md](docs/spec/00-overview.md) for the plan.
 
 ## Local setup
 
@@ -59,6 +59,17 @@ uv run grepwise serve                      # POST /chat (SSE) and GET /health on
 
 For `--provider ollama`, run `make ollama` once: it builds `grepwise-qwen3.5`, qwen3.5:9b with
 a 16k context (Ollama's 4k default silently cuts off agent prompts).
+
+### Web UI
+
+```bash
+make serve                         # the API on :8000
+cd web && npm install && npm run dev   # the UI on http://localhost:3000
+```
+
+Ask questions with streaming answers, a trail of the tools the agent used, and numbered
+citation chips (green when verified). Click a chip to see the exact lines, load more context, or
+open them on GitHub. Visitors can optionally use their own Gemini key (kept in their browser tab).
 
 ## Use with Claude Code / Cursor
 

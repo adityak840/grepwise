@@ -1,3 +1,4 @@
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -26,8 +27,12 @@ def empty_db_url() -> str:
     """URL of the `grepwise_test` database, wiped to an empty schema (no migrations)."""
     url = get_settings().database_url
     try:
-        admin = psycopg.connect(url, autocommit=True, connect_timeout=3)
+        admin = psycopg.connect(url, autocommit=True, connect_timeout=10)
     except psycopg.OperationalError as exc:
+        # Locally, skipping keeps unit tests usable without Docker. In CI (GREPWISE_REQUIRE_DB=1)
+        # a missing database must fail loudly, or every database test would "pass" by skipping.
+        if os.environ.get("GREPWISE_REQUIRE_DB") == "1":
+            pytest.fail(f"Postgres not reachable and GREPWISE_REQUIRE_DB=1: {exc}")
         pytest.skip(f"Postgres not reachable (run `make db`): {exc}")
     with admin:
         exists = admin.execute("SELECT 1 FROM pg_database WHERE datname = %s", (TEST_DB,))

@@ -171,6 +171,7 @@ def run_agent(
     max_steps: int | None = None,
     max_input_tokens: int | None = None,
     max_tool_calls_per_step: int | None = None,
+    byo_key: bool = False,
 ) -> Generator[Event, None, None]:
     """Run one question to completion, yielding events. Closing the generator (e.g. a client
     disconnect) stops the run; every run, however it ends, is logged to agent_runs."""
@@ -178,7 +179,7 @@ def run_agent(
     max_input_tokens = max_input_tokens or ctx.settings.agent_max_input_tokens
     max_calls = max_tool_calls_per_step or ctx.settings.agent_max_tool_calls_per_step
     started = time.monotonic()
-    run = RunRecord(question, llm.provider, llm.model, PROMPT_VERSION)
+    run = RunRecord(question, llm.provider, llm.model, PROMPT_VERSION, byo_key=byo_key)
     seen = SeenRanges()
     already: set[str] = set()
     step_n = 0
