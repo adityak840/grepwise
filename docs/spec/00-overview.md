@@ -34,7 +34,7 @@ Two ways to use it:
    └──────────┬───────────┘
               ▼
    ┌──────────────────────┐
-   │ 2. POSTGRES (Neon)   │  chunks + vectors + full-text index
+   │ 2. POSTGRES (local)   │  chunks + vectors + full-text index
    └──────────┬───────────┘
               ▼
    ┌──────────────────────┐
@@ -79,7 +79,7 @@ Two ways to use it:
 
 **Where it runs:** user-submitted repos are indexed by a **GitHub Actions workflow** triggered by the API. Preset docs sets are indexed from a laptop with the same command-line tool.
 
-### 3.2 Database: Postgres (Neon) with pgvector
+### 3.2 Database: Postgres with pgvector
 
 | Table | Holds |
 |---|---|
@@ -89,7 +89,7 @@ Two ways to use it:
 | `jobs` | indexing queue: status, progress, error |
 
 **Indexes:** HNSW on `embedding`, GIN on `tsv`, b-tree on `symbol`.
-**Storage budget:** Neon's free tier is 0.5 GB, so we use 768-dimension `halfvec` vectors to roughly halve vector storage.
+**Storage:** 768-dimension `halfvec` vectors (half the size of full-precision ones). This was first chosen for a 0.5 GB hosted database; it still keeps a local index small.
 **Versions:** the same library can be indexed at two versions (e.g. Next.js 14 and 16) to answer "what changed?" questions.
 
 ### 3.3 Retrieval: hybrid search
@@ -130,16 +130,15 @@ The LLM provider is behind one interface (OpenAI-compatible), so switching from 
 ### 3.6 MCP server
 - Exposes the same 5 tools, plus each indexed source as a resource.
 - **Makes no LLM calls.** The client's model does the reasoning.
-- **Two ways to connect:**
-  - **Local (stdio):** `uvx grepwise`, published on PyPI.
-  - **Remote (Streamable HTTP):** the hosted instance, with an API key.
-- Indexing new sources needs auth (it costs compute and storage).
+- **The main way to use Grepwise.** The editor starts `grepwise mcp` over stdio from a local checkout (`grepwise mcp-config` prints the setup). Streamable HTTP at `/mcp` also exists, for self-hosting.
+- Tools are read-only: indexing and removing sources are CLI actions.
 
-### 3.7 Frontend (Next.js)
+### 3.7 Frontend (Next.js, optional)
+A local, visual way to inspect answers and citations. Secondary to MCP; frozen after 6.1.
 
 | Screen | What's on it |
 |---|---|
-| **Sources** | Add a repo URL or choose a preset docs set; live indexing progress |
+| **Sources** | Indexed sources and their status (indexing is done in the CLI) |
 | **Chat** | Source picker, streaming answer, tool-call trail, citations |
 | **Viewer** | Code or docs with the cited lines highlighted |
 | **Evals** | Accuracy per eval set |
@@ -184,7 +183,7 @@ User pastes URL → API creates source + job → triggers GitHub Actions
 |---|---|
 | Backend | Python, FastAPI, Pydantic, uv (package manager) |
 | Parsing | tree-sitter, Markdown parser, OpenAPI loader |
-| Database | PostgreSQL + pgvector (Neon) |
+| Database | PostgreSQL + pgvector (Docker) |
 | LLM | `gemini-3.5-flash-lite` (free tier) or a local model via Ollama (`grepwise-qwen3.5`, a 16k-context build of `qwen3.5:9b`). OpenAI-compatible client, tool calling |
 | Embeddings | `nomic-embed-text-v1.5` (quantized), run locally with fastembed (ONNX, CPU), 768 dims. Gemini embeddings remain an option (`EMBEDDER=gemini`) but the free tier caps at about 1,000 chunks a day |
 | MCP | Official Python MCP SDK |
@@ -194,21 +193,21 @@ User pastes URL → API creates source + job → triggers GitHub Actions
 
 ---
 
-## 7. Hosting: free, no card
+## 7. Where it runs: locally, no hosting
 
-| Piece | Runs on | Note |
-|---|---|---|
-| Frontend | Vercel (Hobby) | `grepwise.adityakhandelwal.me` |
-| API + remote MCP | Render (free web service) | Sleeps after 15 min idle; the UI shows "waking up" and warms it on page load |
-| Database | Neon (free) | 0.5 GB, never pauses |
-| Indexing worker | GitHub Actions | Free for public repos |
-| LLM | Gemini API (free tier, `gemini-3.5-flash-lite`) | For the agent only. A shared daily cap for the whole site, small per-visitor limits, at most 5 agent steps per question, and an optional "use your own Gemini key" field (used for that request only, never stored) |
-| Query embeddings | The local model, inside the API on Render | About 290 MB of memory and 12 ms per question; fits the 512 MB free instance |
+**Decision (2026-10-10):** Grepwise is not deployed publicly. It runs on the developer's machine: a local Postgres (Docker), the local embedding model, and the MCP server connected to their editor (Claude Code, Cursor). A hosted demo could only answer about sources we picked, and it would need free-tier workarounds (memory, storage, rate limits, abuse protection) that don't solve a real problem. The showcase is the GitHub repo: README, demo video, MCP case studies and eval numbers.
 
-**Guardrails:** public repos only, a repo size limit, per-visitor and shared daily limits, read-only tools by default.
+| Piece | Runs on |
+|---|---|
+| Database | Postgres + pgvector in Docker (`make db`) |
+| Embeddings | The local model (fastembed, CPU) |
+| MCP server | `grepwise mcp` over stdio, started by the editor |
+| Agent LLM (CLI and web UI only) | Gemini free tier, or Ollama fully offline |
+| Web UI (optional) | `npm run dev`, against `grepwise serve` |
+| CI | GitHub Actions |
 
-**Free-tier reality:** Gemini's free allowance is small (`gemini-3.8-flash`: 20 requests a day; flash-lite has its own, larger allowance). So the live site is a bonus: **the README's demo video and eval numbers are the main showcase**, and when the shared cap is reached the site says so and offers the "use your own key" option. Other OpenAI-compatible free providers (e.g. Groq) can be tried in M6 by changing settings.
-**Secrets:** the Gemini key lives in a local `.env` file (never committed) and in Render's environment settings.
+The rate limits, `X-Gemini-Key` support and MCP over HTTP built earlier still work, for anyone who wants to host it themselves, but they aren't extended.
+**Secrets:** the Gemini key lives only in a local `.env` file (never committed).
 
 ---
 
@@ -221,7 +220,7 @@ User pastes URL → API creates source + job → triggers GitHub Actions
 | M3 | Tool layer + citations | All 5 tools work from the command line with valid citations |
 | M4 | Web agent + SSE | Streamed answers with checked citations |
 | M5 | MCP server (stdio + HTTP) | Works inside Claude Code |
-| M6 | UI, evals, deployment, PyPI release, README | Live URL plus eval numbers |
+| M6 | UI, evals, MCP onboarding, README | A README with eval numbers and MCP case studies |
 
 Each milestone ends with a code review before the next one starts.
 

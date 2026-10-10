@@ -106,6 +106,8 @@ After the answer is complete:
 4. Emit a `citations` event listing each citation with a status: `verified`, `not_found`, `bad_range`, or `unseen`, plus the verified text for `verified` ones.
 5. If an answer has claims but **no** verified citation, `done` carries `"grounded": false`, so the UI can warn.
 
+**Asking once for citations** (`AGENT_CITATION_RETRY`, default on): if the answer contains no well-formed citation although tools returned citable results, the agent sends `reset`, then one tools-off request: the draft as the assistant's turn, followed by `CITE_NUDGE` ("rewrite with citations copied from the tool results; remove claims you can't cite"). The rewrite replaces the draft; if it's empty or the call fails, the draft is shown again. `done` carries `"citation_retry": true`. Added after live tests showed the local model routinely answering correctly but without citations. The system prompt also has a worked **example** of a cited sentence, which small models follow better than rules alone.
+
 The answer text itself is not rewritten; the UI uses the statuses to render markers as links or flag them.
 
 ---

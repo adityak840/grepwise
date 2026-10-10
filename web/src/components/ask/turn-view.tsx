@@ -31,6 +31,7 @@ export function TurnView({ turn, onOpenCitation }: { turn: Turn; onOpenCitation:
           text={turn.status === "streaming" ? hidePartialMarker(turn.text) : turn.text}
           citations={turn.citations}
           onOpenCitation={onOpenCitation}
+          streaming={turn.status === "streaming" || turn.status === "looking"}
         />
       )}
 
@@ -63,6 +64,7 @@ export function TurnView({ turn, onOpenCitation }: { turn: Turn; onOpenCitation:
           <span>
             {turn.done.steps} tool {turn.done.steps === 1 ? "call" : "calls"} · {turn.done.seconds.toFixed(1)}s ·{" "}
             {turn.done.provider}/{turn.done.model}
+            {turn.done.citation_retry && " · asked once for citations"}
           </span>
         </footer>
       )}

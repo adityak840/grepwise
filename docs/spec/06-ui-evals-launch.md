@@ -1,6 +1,8 @@
-# M6: Web UI, evals, deployment and launch
+# M6: Web UI, evals and launch
 
-**Goal:** a public, polished Grepwise: a web UI anyone can try, measured quality numbers, a live deployment on free hosting, a PyPI release for the MCP server, and a README that shows it all.
+> **Phases 6.2–6.4 are superseded** by the v2 plan, [10-v2-plan.md](10-v2-plan.md) (2026-10-10). Phase 6.1 was built and is archived at the `v0.1-webapp` tag.
+
+**Goal:** a polished, local-first Grepwise: a web UI, measured quality numbers, easy MCP setup, and a GitHub README that shows it all. There is no public deployment (see phase 6.3).
 
 M6 has **four phases**, built and reviewed one at a time:
 
@@ -8,8 +10,8 @@ M6 has **four phases**, built and reviewed one at a time:
 |---|---|---|
 | **6.1** | Web UI (Next.js) and the small API additions it needs | 1 day |
 | **6.2** | Evals: retrieval and answer quality, Gemini vs. local, with vs. without MCP | 1 day (half of it is you writing questions) |
-| **6.3** | Deployment: Neon, Render, Vercel, GitHub Actions | 0.5–1 day |
-| **6.4** | Launch: README, demo video, PyPI, licence, final checks | 0.5 day |
+| **6.3** | MCP-first polish: `mcp-config`, `doctor`, `remove`, demo sources, CI | 0.5–1 day |
+| **6.4** | README, demo video, MCP case studies, licence, final checks | 1 day |
 
 Each phase has its own acceptance criteria, and ends with a code review before the next one starts.
 
@@ -56,6 +58,9 @@ Each phase has its own acceptance criteria, and ends with a code review before t
 - **Cold start:** on page load, call `/health`. If it doesn't answer within about 2 s, show "Waking up the server (free hosting sleeps when idle)…" until it does.
 - **Use your own Gemini key** (optional, in settings): kept in `sessionStorage` only, sent as an `X-Gemini-Key` header. A short note explains it's used for that request only and never stored by Grepwise.
 - Example questions as clickable chips, for first-time visitors.
+- **Question history:** past questions saved in the browser's `localStorage` only (at most 30, newest first, deduplicated), shown as "Your recent questions" on the start screen and in a History menu. Answers aren't saved. Remove one, or clear all.
+- **Smooth streaming:** tokens are rendered at most once per animation frame; code blocks are syntax-highlighted only once the answer is complete; the view follows new text only while the reader is at the bottom (scrolling up stops it); the tool trail's collapse is animated.
+- **Tabs:** the conversation lives above the pages (a provider in the layout), so switching tabs keeps it, even while an answer streams; each tab fades in (`app/template.tsx`), respecting reduced motion.
 - Responsive down to 360 px, light and dark mode, keyboard accessible, `prefers-reduced-motion` respected.
 
 ## 4. Backend additions (`api/app.py`)
@@ -136,72 +141,76 @@ Pinned sources: `pallets/itsdangerous@2.2.0` (code), `fastapi/typer@0.27.2` (doc
 
 ---
 
-# Phase 6.3: Deployment
+# Phase 6.3: MCP-first polish and CI
 
-## 10. Database: Neon
-- Create a Neon project, enable `vector`, run `grepwise db migrate` against it.
-- Index the demo sources **from your laptop** (`DATABASE_URL=<neon>` with the local embedder): itsdangerous, Typer (docs and code), Petstore, plus one or two popular libraries if storage allows.
-- Check the size stays well under **0.5 GB** (`grepwise stats`). Record it in the README.
+**Decision (2026-10-10): no public deployment.** Grepwise is used where it's useful: on a developer's own machine, through MCP in their editor, over the repos and docs they choose. A hosted demo would only answer about sources we picked, and it would need free-tier workarounds (memory, storage, rate limits, abuse protection) that solve no real problem. The showcase is the **GitHub repo**: the README, a demo video, real MCP sessions and eval numbers. The hosted-only code already built (rate limits, `X-Gemini-Key`, MCP over HTTP) stays as it is but isn't extended.
 
-## 11. Backend: Render (free web service)
-- `backend/Dockerfile`, multi-stage with uv:
-  - The **embedding model and tree-sitter grammars are baked into the image** at build time, so a cold start never downloads them.
-  - Runs as a non-root user; `uvicorn` on `$PORT`; a health check on `/health`.
-- **Memory:** must run within **512 MB**. Test locally with `docker run --memory=512m`, then ask a question and run an MCP call; record peak memory.
-- Environment (set in Render, never in the repo): `DATABASE_URL`, `GEMINI_API_KEY`, `LLM_PROVIDER=gemini`, `EMBEDDER=local`, `TRUST_PROXY_HEADERS=true`, `ALLOWED_ORIGINS=<vercel url>,https://grepwise.adityakhandelwal.me`, `MCP_ALLOWED_HOSTS=<render host>`, `HOSTED_MAX_STEPS=5`, `CHAT_GLOBAL_PER_DAY` (set from flash-lite's real limit), and `MCP_API_KEYS` (optional).
-- Check how Render sets `X-Forwarded-For`, and confirm the right-most rule holds (log one request's header in a test deploy, then remove the log).
+## 10. The web UI is frozen
+**MCP is the product; the web UI is a side piece.** The UI built in 6.1 stays as it is (it works, and it's useful for showing citations visually), but it gets no new features. The README presents it as an optional extra, after the MCP path. Only one fix:
+- **API unreachable:** replace the "Waking up the server (free hosting sleeps when idle)" message with "Can't reach the Grepwise API at `<url>`. Start it with `make serve`." and a Retry button. Drop the hosted-service privacy wording on `/about`.
 
-## 12. Frontend: Vercel (Hobby)
-- Import `web/` as a project; set `NEXT_PUBLIC_API_URL` to the Render URL.
-- **Custom domain:** `grepwise.adityakhandelwal.me`, via a CNAME record you add at your DNS provider.
+## 11. Managing sources from the CLI
+MCP users manage sources in the terminal, so the CLI covers the whole lifecycle:
+- **`grepwise remove <name@version> [--type repo|docs|openapi] [--yes]`** deletes a source and its documents and chunks (check the schema cascades; fix it in migration 008 if not). The embedding cache is kept, so re-indexing is fast. It asks for confirmation unless `--yes`; when a name and version match more than one source type (e.g. Typer's docs and code), it requires `--type`.
+- Re-running `grepwise index …` for an existing `name@version` already re-indexes in place; document that in `--help` and the README.
+- The MCP tools stay read-only: indexing and removal are deliberate CLI actions.
 
-## 13. GitHub Actions
-- **CI** (`ci.yml`, on push and PR): backend lint and tests (with a Postgres + pgvector service container, and **`GREPWISE_REQUIRE_DB=1`** so database tests fail instead of silently skipping if the service isn't reachable), and frontend lint, typecheck, tests and build.
-- **Indexing** (`index.yml`, `workflow_dispatch` only): inputs `type` (repo/docs/openapi), `url`, `ref`/`version`, `path`, `name`. Runs the matching `grepwise index*` command against Neon using a `NEON_DATABASE_URL` secret, and caches the embedding model between runs.
-  - **Only you can trigger it.** Indexing repos that visitors submit is a non-goal: it would need abuse protection and storage controls that don't fit the free tier.
-- Optional `keepwarm.yml`: ping `/health` during the day if you decide it's acceptable under Render's terms. Off by default.
+## 12. One-command setup and MCP onboarding
+- **`make demo-sources`** indexes the pinned eval sources (itsdangerous 2.2.0, Typer 0.27.2 docs and code, Click 8.5.0 docs and code, Petstore 1.0.27), so anyone can reproduce the eval numbers.
+- **`grepwise mcp-config [--client claude-code|cursor|claude-desktop]`** prints the exact `claude mcp add …` command or the JSON block, with the absolute path to this checkout's `backend/` filled in. The README uses it instead of asking people to edit paths by hand.
+- `grepwise doctor`: checks that the database is reachable and migrated, the pgvector extension is present, the embedding model is downloaded, at least one source is `ready`, and (if set) the Gemini key or Ollama model is reachable. It prints one ✓/✗ line per check with a fix hint. This is the first thing to run when the MCP server "doesn't work".
+
+## 13. GitHub Actions: CI only
+- **`ci.yml`** (on push and PR): backend lint and tests (with a Postgres + pgvector service container, and **`GREPWISE_REQUIRE_DB=1`** so database tests fail instead of silently skipping if the service isn't reachable), and frontend lint, typecheck, tests and build.
+- Cache uv and npm downloads. Tests stay offline (FakeEmbedder; no model download, no Gemini).
+- A CI status badge for the README.
 
 ## 14. Acceptance (6.3)
-- [ ] The live UI answers a question end to end, with green citations, on the custom domain.
-- [ ] Remote MCP works: `claude mcp add --transport http grepwise https://<render-host>/mcp`.
-- [ ] The cold start shows the wake-up message and then works.
-- [ ] The rate limits and the site cap work on the live service (test with low temporary values).
-- [ ] CI is green; the indexing workflow runs once successfully.
-- [ ] No secrets in the repo or its git history (`git log -p | grep -i "key"` reviewed), and Render logs don't show keys or full error bodies.
+- [ ] Backend tests: `remove` deletes documents and chunks but keeps the embedding cache, refuses an ambiguous name without `--type`, and asks for confirmation without `--yes`; `mcp-config` output for each client; `doctor` reports a missing database clearly.
+- [ ] Vitest: the new "can't reach the API" message.
+- [ ] Manual: index a small repo, ask about it from Claude Code over MCP, then `grepwise remove` it.
+- [ ] Manual: on a fresh clone, follow the README's setup, `make demo-sources`, and connect Claude Code using `grepwise mcp-config`.
+- [ ] CI is green on GitHub.
 
 ---
 
-# Phase 6.4: Launch
+# Phase 6.4: README, demo and MCP case studies
 
-## 15. README (the main showcase)
+The resume links to the GitHub repo. The README must make sense to someone who never runs it, and get someone who does want to use it working in Claude Code in about 10 minutes.
+
+## 15. README (the whole showcase)
 In this order:
-1. **One-line pitch**, then a **demo GIF** (about 15 s).
-2. **Try it:** live URL, plus the MCP one-liner.
-3. **What makes it different:** checked citations (real *and* seen), hybrid search, code + docs + API in one place, local-first (fully offline with Ollama), and MCP.
-4. **Architecture diagram** (Mermaid, which GitHub renders).
-5. **Results:** the eval tables from 6.2 (retrieval ablation, answers per provider, and the MCP comparison), with a one-line explanation of each metric.
-6. **Quickstart:** local setup, indexing, asking, MCP.
-7. **Design decisions and trade-offs:** local embeddings (the quota story), hybrid search with RRF, the citation checks, the tool layer, free hosting.
-8. **Limitations** (honest): `find_symbol` misses methods inside small classes; MDX headings inside JSX blocks; free-tier daily caps; the local model is weaker than Gemini; English-centric keyword search.
-9. **Roadmap:** a symbols table, more languages, reranking, user-submitted repos.
+1. **One-line pitch**, a CI badge, then a **demo GIF** (about 15 s): a question in Claude Code, Grepwise tool calls, an answer with citations.
+2. **Why:** coding assistants guess at library APIs from training data that may be out of date. Grepwise gives them the real code and docs at the exact version you use, and every claim comes with a line-level citation that is checked.
+3. **Use it in Claude Code** (the main path): clone → `make setup db migrate` → index what you work with (`grepwise index …`) → `grepwise mcp-config` → ask in Claude Code. `grepwise sources` and `grepwise remove` to manage what's indexed. Then `grepwise doctor` if anything fails.
+4. **Case studies** (section 17): two or three real tasks solved with Grepwise over MCP, each a short summary linking to the full transcript.
+5. **How it works:** an **architecture diagram** (Mermaid, which GitHub renders): ingest (tree-sitter, docs and OpenAPI splitters) → Postgres (pgvector + full-text) → hybrid search with RRF → one tool layer → the MCP server and the web agent; then the citation checks (real *and* seen).
+6. **Results:** the eval tables from 6.2 (retrieval ablation, answers per provider, the with/without MCP comparison), with a one-line explanation of each metric and how to reproduce them (`make demo-sources`, `grepwise eval …`).
+7. **Optional: the web UI**, kept short: one screenshot of an answer with citation chips and the viewer, and the two commands to run it. It's a visual way to inspect answers, not the main way to use Grepwise.
+8. **Design decisions and trade-offs:** local embeddings (the quota story), hybrid search with RRF, citations that must be seen and real, the shared tool layer, read-only tools, why there is no hosted version.
+9. **Limitations** (honest): `find_symbol` misses methods inside small classes; MDX headings inside JSX blocks; the local model is weaker than Gemini; English-centric keyword search; indexing and removing sources are CLI-only.
+10. **Roadmap:** a symbols table, more languages, reranking, an optional `index` MCP tool, a PyPI package.
+- A note that the eval questions were drafted with Claude and checked by you.
 
 ## 16. Demo video (60–90 s)
-A script in `docs/demo-script.md`: ask a cross-source question → tool trail → streamed answer → click a citation → the verified lines → the same question in Claude Code through MCP → the eval table. Record with any screen recorder; link it at the top of the README.
+A script in `docs/demo-script.md`: in Claude Code, ask a question about a library whose current API differs from what models remember → Grepwise tool calls → the answer with citations → open a cited file at those lines → the same question without Grepwise (a vaguer or outdated answer) → the eval table. (The web UI can appear for a few seconds at most.) Record with any screen recorder; upload as an unlisted YouTube video or a GitHub-hosted MP4, and link it at the top of the README. The GIF is a 15 s cut of the same recording.
 
-## 17. PyPI release
-- Package `grepwise`, version `0.1.0`. **Move `backend/migrations/` into the package** (e.g. `src/grepwise/migrations/`) so it ships with the install; update the migration runner and tests.
-- Publish from GitHub Actions on a version tag, using **PyPI trusted publishing** (no API token stored).
-- `uvx grepwise mcp` documented: it needs a reachable Postgres with pgvector (`DATABASE_URL`) and indexed sources, or use the hosted `/mcp` instead.
-- Check the package installs and runs `grepwise --help` in a clean virtual environment.
+## 17. MCP case studies (`docs/case-studies/`)
+Real tasks, done in Claude Code with Grepwise connected, that show it solving the kind of problem it's for. For each one, write a Markdown page with: the task, the sources indexed, the prompt, a trimmed transcript (the tool calls and the answer with its citations), whether the citations verified, and what would have gone wrong without it. Candidates (pick two or three, done for real):
+- **Write correct code against a pinned version:** "Add a `--version` flag and a password prompt to this Typer CLI", using Typer 0.27.2's docs *and* `docs_src` examples.
+- **Explain behaviour from the source:** "Why does my itsdangerous token fail after rotating keys?" (key rotation in `signer.py`).
+- **Check an API before calling it:** "Write a client function that lists available pets", grounded in the Petstore spec's parameters and error codes.
+- **Your own work repo** (only public, shareable code): index it and ask how a feature works.
 
 ## 18. Final polish
-- `LICENSE` (MIT), and a privacy note on `/about`: questions are logged for quality evaluation; your own Gemini key is never stored.
-- Remove debug code, check every `TODO`, and make the `.env.example` comments match the final settings.
-- The resume bullet, written with the **real** eval numbers.
+- `LICENSE` (MIT).
+- Remove debug code, check every `TODO`, and make the `.env.example` comments match the final settings (mark the hosted-only ones as such).
+- Update `docs/spec/00-overview.md` if anything drifted.
+- The resume bullet, written with the **real** eval numbers and the GitHub link.
 
 ## 19. Acceptance (6.4)
-- [ ] The README renders correctly on GitHub, with the GIF, diagram and tables.
-- [ ] `uvx grepwise --help` works from PyPI in a clean environment.
+- [ ] The README renders correctly on GitHub, with the GIF, diagram, tables and screenshots, and every command in it works on a fresh clone.
+- [ ] Two or three case studies are written from real sessions.
 - [ ] The demo video is recorded and linked.
 - [ ] A final code review across the whole project.
 - [ ] **The full recap and quiz.**
@@ -209,6 +218,9 @@ A script in `docs/demo-script.md`: ask a cross-source question → tool trail �
 ---
 
 ## Non-goals (whole of M6)
-- User accounts, saved conversations, user-submitted repos
-- Paid hosting or paid LLM tiers
+- A public deployment (Vercel, Render, Neon), and anything that only exists for one: visitor-submitted repos, abuse protection, wake-up handling
+- A PyPI release (on the roadmap; it would still need a local Postgres)
+- User accounts, saved conversations
+- Paid LLM tiers
 - Private repos
+- Indexing from MCP (the tools stay read-only; indexing is a deliberate CLI or UI action)

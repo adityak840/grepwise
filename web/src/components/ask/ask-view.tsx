@@ -1,16 +1,18 @@
 "use client";
 
 import { ArrowUp, CircleStop, CloudSun, RotateCcw } from "lucide-react";
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useChat } from "@/hooks/use-chat";
+import { useChatContext } from "@/components/chat-provider";
 import { useHealth } from "@/hooks/use-health";
 import type { Chip } from "@/lib/answer";
 import { getSources, type SourceInfo } from "@/lib/api";
+import { addQuestion } from "@/lib/question-history";
 
 import { CitationViewer } from "./citation-viewer";
+import { HistoryMenu, RecentQuestions } from "./question-history";
 import { SourcePicker } from "./source-picker";
 import { TurnView } from "./turn-view";
 
@@ -22,7 +24,7 @@ const EXAMPLES = [
 const MAX_QUESTION = 2_000;
 
 export function AskView() {
-  const { turns, busy, ask, stop, clear } = useChat();
+  const { turns, busy, ask, stop, clear } = useChatContext();
   const health = useHealth();
   const [question, setQuestion] = useState("");
   const [sources, setSources] = useState<SourceInfo[]>([]);
@@ -39,14 +41,42 @@ export function AskView() {
 
   const sourceTypes = useMemo(() => new Map(sources.map((s) => [s.ref, s.type])), [sources]);
   const last = turns.at(-1);
+
+  // "Stick to the bottom": while an answer streams, follow it, but only if the reader is already
+  // at the bottom. Scrolling up to re-read stops the following; scrolling back down resumes it.
+  // (Smooth-scrolling on every update fought the growing content and made the page shake.)
+  const stick = useRef(true);
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-  }, [turns.length, last?.status]);
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      const nearBottom = window.innerHeight + y >= document.documentElement.scrollHeight - 120;
+      if (nearBottom) stick.current = true;
+      else if (y < lastY - 2) stick.current = false; // the reader scrolled up
+      lastY = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // A new question: one smooth scroll to it.
+  useEffect(() => {
+    if (!turns.length) return;
+    stick.current = true;
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    endRef.current?.scrollIntoView({ block: "end", behavior: reduced ? "auto" : "smooth" });
+  }, [turns.length]);
+
+  // New text or steps: follow instantly (no animation), before the browser paints.
+  useLayoutEffect(() => {
+    if (stick.current) endRef.current?.scrollIntoView({ block: "end" });
+  }, [last?.text.length, last?.steps.length, last?.status]);
 
   function submit(text: string) {
     const q = text.trim();
     if (!q || busy) return;
     setQuestion("");
+    addQuestion(q); // this browser only
     void ask(q, selected);
   }
 
@@ -83,6 +113,7 @@ export function AskView() {
               </Button>
             ))}
           </div>
+          <RecentQuestions onPick={submit} />
         </section>
       ) : (
         <div className="flex flex-col gap-10">
@@ -114,6 +145,7 @@ export function AskView() {
         />
         <div className="flex items-center gap-2">
           <SourcePicker sources={sources} selected={selected} onChange={setSelected} />
+          <HistoryMenu onPick={submit} disabled={busy} />
           {turns.length > 0 && !busy && (
             <Button type="button" variant="ghost" size="sm" onClick={clear}>
               <RotateCcw /> New chat

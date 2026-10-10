@@ -389,6 +389,8 @@ def ask(
                         console.print(f"  ✗ {c['citation']}: {reason}", style="red", markup=False)
             elif ev.type == "done":
                 grounded = "" if data["grounded"] else " · not grounded: no verified citations"
+                if data.get("citation_retry"):
+                    grounded = " · asked once for citations" + grounded
                 console.print(
                     f"\n{data['steps']} tool calls · {data['input_tokens']:,} in / "
                     f"{data['output_tokens']:,} out tokens · {data['seconds']:.1f}s · "

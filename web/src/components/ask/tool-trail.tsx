@@ -32,7 +32,7 @@ export function ToolTrail({ steps, answering }: ToolTrailProps) {
         {steps.length} tool {steps.length === 1 ? "call" : "calls"}
         {pending && <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" aria-label="running" />}
       </CollapsibleTrigger>
-      <CollapsibleContent>
+      <CollapsibleContent className="data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down overflow-hidden motion-reduce:animate-none">
         <ol className="border-muted mt-1 ml-2 space-y-1 border-l pl-4 font-mono text-xs">
           {steps.map((s) => (
             <li key={s.n} className="flex flex-wrap items-baseline gap-x-1.5">

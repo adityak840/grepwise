@@ -11,7 +11,7 @@ from collections.abc import Generator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from grepwise.agent.citations import SeenRanges, check_citations
+from grepwise.agent.citations import MARKER, SeenRanges, check_citations
 from grepwise.agent.events import Event, summarize
 from grepwise.agent.llm import (
     LLMClient,
@@ -22,7 +22,7 @@ from grepwise.agent.llm import (
     ToolCallRequest,
     Usage,
 )
-from grepwise.agent.prompt import PROMPT_VERSION, SYSTEM_PROMPT
+from grepwise.agent.prompt import CITE_NUDGE, PROMPT_VERSION, SYSTEM_PROMPT
 from grepwise.agent.runs import RunRecord, save_run
 from grepwise.tools import ToolContext, call_tool, serialize, tool_schemas
 
@@ -172,12 +172,17 @@ def run_agent(
     max_input_tokens: int | None = None,
     max_tool_calls_per_step: int | None = None,
     byo_key: bool = False,
+    citation_retry: bool | None = None,
 ) -> Generator[Event, None, None]:
     """Run one question to completion, yielding events. Closing the generator (e.g. a client
     disconnect) stops the run; every run, however it ends, is logged to agent_runs."""
     max_steps = max_steps or ctx.settings.agent_max_steps
     max_input_tokens = max_input_tokens or ctx.settings.agent_max_input_tokens
     max_calls = max_tool_calls_per_step or ctx.settings.agent_max_tool_calls_per_step
+    retry_citations = (
+        ctx.settings.agent_citation_retry if citation_retry is None else citation_retry
+    )
+    retried = False
     started = time.monotonic()
     run = RunRecord(question, llm.provider, llm.model, PROMPT_VERSION, byo_key=byo_key)
     seen = SeenRanges()
@@ -237,6 +242,28 @@ def run_agent(
             account(reply, messages)
             answer = reply.text
 
+        # An answer with no citations, although tools showed citable results: ask once for a
+        # rewrite with citations (tools off). Small local models often skip citations otherwise.
+        if retry_citations and seen and answer.strip() and not MARKER.search(answer):
+            retried = True
+            yield Event("reset", {})  # withdraw the uncited draft that was just streamed
+            messages += [
+                {"role": "assistant", "content": answer},
+                {"role": "user", "content": CITE_NUDGE},
+            ]
+            try:
+                reply = yield from _stream_reply(llm, messages, None)
+                account(reply, messages)
+                rewrite = reply.text
+            except LLMError as exc:  # keep the first answer rather than lose everything
+                log.warning("Citation rewrite failed (%s); keeping the first answer", exc.code)
+                rewrite = ""
+                yield Event("reset", {})
+            if rewrite.strip():
+                answer = rewrite
+            else:
+                yield Event("token", {"text": answer})  # nothing better: show the draft again
+
         run.answer = answer
         checks = check_citations(ctx.conn, answer, seen)
         run.citations = [{"citation": c.citation, "status": c.status} for c in checks]
@@ -249,6 +276,7 @@ def run_agent(
             "run_id": run_id, "steps": step_n, "grounded": run.grounded,
             "input_tokens": run.input_tokens, "output_tokens": run.output_tokens,
             "seconds": round(run.seconds, 2), "provider": llm.provider, "model": llm.model,
+            "citation_retry": retried,
         })  # fmt: skip
     except LLMError as exc:
         run.error = f"{exc.code}: {exc.message}"

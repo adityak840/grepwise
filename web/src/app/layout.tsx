@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
+import { ChatProvider } from "@/components/chat-provider";
 import { SiteHeader } from "@/components/site-header";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -27,9 +28,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               Skip to content
             </a>
             <SiteHeader />
-            <main id="main" className="flex flex-1 flex-col">
-              {children}
-            </main>
+            <ChatProvider>
+              <main id="main" className="flex flex-1 flex-col">
+                {children}
+              </main>
+            </ChatProvider>
           </TooltipProvider>
         </ThemeProvider>
       </body>

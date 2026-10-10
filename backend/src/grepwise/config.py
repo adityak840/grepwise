@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # Tool calls run per model reply; extra calls get an error result. Stops a confused model
     # from flooding the next request (and a 16k local context) with results.
     agent_max_tool_calls_per_step: int = 4
+    # If an answer has no citations although tools returned results, ask once for a rewrite with
+    # citations (one extra LLM call, only then). Turn off to measure the difference in evals.
+    agent_citation_retry: bool = True
 
     # HTTP API
     chat_rate_per_minute: int = 3  # per client IP

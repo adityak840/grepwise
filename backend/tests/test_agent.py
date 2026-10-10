@@ -26,7 +26,7 @@ from grepwise.agent.llm import (
     tool_call,
 )
 from grepwise.agent.loop import FINAL_NUDGE, run_agent
-from grepwise.agent.prompt import PROMPT_VERSION
+from grepwise.agent.prompt import CITE_NUDGE, PROMPT_VERSION, SYSTEM_PROMPT
 from grepwise.config import LLMConfig, get_settings
 from grepwise.ingest.embed import FakeEmbedder
 from grepwise.ingest.pipeline import index_repo
@@ -113,7 +113,7 @@ def test_step_limit_then_one_answer_without_tools(ctx: ToolContext) -> None:
         [tool_call("search", json.dumps({"query": f"q{i}"})) for i in range(3)]
         + [text("Best answer from what I saw.")]
     )
-    events = run(ctx, llm, max_steps=3)
+    events = run(ctx, llm, max_steps=3, citation_retry=False)
     assert len(llm.calls) == 4
     assert all(tools is not None for _, tools in llm.calls[:3])
     final_messages, final_tools = llm.calls[3]
@@ -289,7 +289,7 @@ def test_preamble_before_a_tool_call_is_reset(ctx: ToolContext) -> None:
          ToolCallRequest("c1", "search", '{"query": "session"}'), Usage(10, 10)],
         text("Final answer."),
     ])  # fmt: skip
-    events = run(ctx, llm)
+    events = run(ctx, llm, citation_retry=False)
     # Whatever was streamed before the tool call is withdrawn with a `reset` event...
     reset_at = next(i for i, e in enumerate(events) if e.type == "reset")
     after = "".join(e.data["text"] for e in events[reset_at:] if e.type == "token")
@@ -572,3 +572,62 @@ def test_summaries() -> None:
     assert summarize("get_endpoint", {"error": {"code": "endpoint_not_found"}}) == (
         False, "endpoint_not_found",
     )  # fmt: skip
+
+
+# --- Asking once for citations ------------------------------------------------------------
+
+SEARCH = tool_call("search", '{"query": "session"}')
+
+
+def after_last_reset(events: list[Event]) -> str:
+    start = max((i for i, e in enumerate(events) if e.type == "reset"), default=-1)
+    return "".join(e.data["text"] for e in events[start + 1 :] if e.type == "token")
+
+
+def test_uncited_answer_after_tool_results_is_asked_to_cite(ctx: ToolContext) -> None:
+    llm = ScriptedClient([
+        SEARCH,
+        text("Sessions are refreshed by the client. " * 8),  # no citations at all
+        text("Sessions are refreshed by the client, with citations now."),
+    ])  # fmt: skip
+    events = run(ctx, llm)
+    # The first draft was streamed, then withdrawn; the rewrite is what the reader keeps.
+    assert "reset" in types(events)
+    assert after_last_reset(events) == "Sessions are refreshed by the client, with citations now."
+    # The rewrite request: tools off, the draft as the assistant's turn, then the nudge.
+    sent, tools_offered = llm.calls[2]
+    assert tools_offered is None
+    assert sent[-2]["role"] == "assistant" and sent[-2]["content"].startswith("Sessions are")
+    assert sent[-1] == {"role": "user", "content": CITE_NUDGE}
+    assert last(events, "done")["citation_retry"] is True
+
+
+def test_cited_answer_is_not_asked_again(ctx: ToolContext) -> None:
+    llm = ScriptedClient([SEARCH, text(f"See [[{SESSION}:L1-L2]].")])
+    events = run(ctx, llm)
+    assert len(llm.calls) == 2 and last(events, "done")["citation_retry"] is False
+
+
+def test_no_tool_results_means_nothing_to_cite(ctx: ToolContext) -> None:
+    llm = ScriptedClient([text("I couldn't find that in the indexed sources.")])
+    events = run(ctx, llm)
+    assert len(llm.calls) == 1 and last(events, "done")["citation_retry"] is False
+
+
+def test_citation_retry_can_be_turned_off(ctx: ToolContext) -> None:
+    llm = ScriptedClient([SEARCH, text("No citations here.")])
+    events = run(ctx, llm, citation_retry=False)
+    assert len(llm.calls) == 2 and last(events, "done")["citation_retry"] is False
+
+
+def test_empty_rewrite_keeps_the_first_answer(ctx: ToolContext) -> None:
+    draft = "A useful answer without citations. " * 8
+    llm = ScriptedClient([SEARCH, text(draft), text("")])
+    events = run(ctx, llm)
+    assert after_last_reset(events) == draft  # shown again after the reset
+    assert last(events, "done")["citation_retry"] is True
+
+
+def test_system_prompt_has_a_worked_citation_example() -> None:
+    # Small local models follow an example far better than a rule.
+    assert "## Example" in SYSTEM_PROMPT and "[[" in SYSTEM_PROMPT.split("## Example", 1)[1]

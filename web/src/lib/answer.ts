@@ -22,6 +22,7 @@ export interface DoneInfo {
   seconds: number;
   provider: string;
   model: string;
+  citation_retry?: boolean; // the agent was asked once to add citations to its first draft
 }
 
 export type TurnStatus =

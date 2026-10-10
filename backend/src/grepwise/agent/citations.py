@@ -64,6 +64,10 @@ class SeenRanges:
             if isinstance(item, dict) and isinstance(item.get("citation"), str):
                 self.add(item["citation"])
 
+    def __bool__(self) -> bool:
+        """True once any tool has shown the model something citable."""
+        return bool(self._ranges)
+
     def covers(self, name: str, version: str, path: str, start: int, end: int) -> bool:
         """True if lines start..end all lie within what tools showed (results that overlap or
         touch are merged first). A citation wider than what was shown doesn't count."""

@@ -23,10 +23,11 @@ interface AnswerMarkdownProps {
   text: string;
   citations: CitationCheck[] | null;
   onOpenCitation: (chip: Chip) => void;
+  streaming?: boolean; // code blocks are coloured once the answer is complete
 }
 
 /** The answer as Markdown (raw HTML is not rendered), with citation markers shown as chips. */
-export function AnswerMarkdown({ text, citations, onOpenCitation }: AnswerMarkdownProps) {
+export function AnswerMarkdown({ text, citations, onOpenCitation, streaming = false }: AnswerMarkdownProps) {
   const { markdown, chips } = useMemo(() => withChips(text, citations), [text, citations]);
   const components = useMemo<Components>(
     () => ({
@@ -55,10 +56,14 @@ export function AnswerMarkdown({ text, citations, onOpenCitation }: AnswerMarkdo
       },
       pre({ children }) {
         const block = codeChild(children);
-        return block ? <CodeView code={block.code} lang={block.lang} className="not-prose my-3" /> : <pre>{children}</pre>;
+        return block ? (
+          <CodeView code={block.code} lang={block.lang} highlight={!streaming} className="not-prose my-3" />
+        ) : (
+          <pre>{children}</pre>
+        );
       },
     }),
-    [chips, onOpenCitation],
+    [chips, onOpenCitation, streaming],
   );
   return (
     <div className="prose prose-sm dark:prose-invert prose-pre:p-0 prose-code:before:content-none prose-code:after:content-none prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-normal max-w-none break-words [&_p]:leading-relaxed">

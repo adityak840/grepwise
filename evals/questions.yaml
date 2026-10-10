@@ -3,7 +3,9 @@
 # Sources these questions assume are indexed (all pinned):
 #   pallets/itsdangerous@2.2.0   repo  (grepwise index https://github.com/pallets/itsdangerous --ref 2.2.0)
 #   fastapi/typer@0.27.2         docs  (grepwise index-docs https://github.com/fastapi/typer --ref 0.27.2 --path docs)
-#   fastapi/typer@0.27.2         repo  (grepwise index https://github.com/fastapi/typer --ref 0.27.2)  <- needed for cross-source
+#   fastapi/typer@0.27.2         repo  (grepwise index https://github.com/fastapi/typer --ref 0.27.2)
+#   pallets/click@8.5.0          repo  (grepwise index https://github.com/pallets/click --ref 8.5.0)
+#   pallets/click@8.5.0          docs  (grepwise index-docs https://github.com/pallets/click --ref 8.5.0 --path docs)
 #   petstore@1.0.27              openapi
 #
 # How to write a question:
@@ -18,11 +20,12 @@
 #
 # Target: ~20 code, ~15 docs, ~5 api, ~10 cross, plus a few absent.
 #
-# The six below are DRAFTS written by Claude after reading the files (2026-10-06).
-# Check each one yourself, then remove its "draft: true" line.
+# Drafted by Claude after reading the files (2026-10-06), reviewed and approved by Aditya
+# (2026-10-10). New questions can start with "draft: true" until checked; drafts only run
+# with --include-drafts.
 
 - id: code-01
-  draft: true
+
   category: code
   question: How does TimestampSigner decide that a signature has expired?
   sources: [pallets/itsdangerous@2.2.0]
@@ -34,7 +37,7 @@
     facts: [max_age, SignatureExpired]
 
 - id: code-02
-  draft: true
+
   category: code
   question: What ways can Signer derive its signing key from the secret, and which one is the default?
   sources: [pallets/itsdangerous@2.2.0]
@@ -44,8 +47,189 @@
     # Signer's docstring: key_derivation can be concat, django-concat or hmac; default django-concat.
     facts: [django-concat, hmac]
 
+- id: code-03
+
+  category: code
+  question: "If I rotate my secret key, can tokens signed with the old key still be verified?"
+  sources: [pallets/itsdangerous@2.2.0]
+  expect:
+    paths: [src/itsdangerous/signer.py]
+    # secret_key may be a list, oldest first; signing uses secret_keys[-1] (the newest) and verify_signature tries every key from newest to oldest.
+    facts: ["secret_keys", "newest"]
+
+- id: code-04
+
+  category: code
+  question: "When does URLSafeSerializer compress the payload, and how can you tell a compressed token apart?"
+  sources: [pallets/itsdangerous@2.2.0]
+  expect:
+    paths: [src/itsdangerous/url_safe.py]
+    # It zlib-compresses the JSON and keeps it only if it's shorter; a compressed payload starts with a '.'.
+    facts: ["zlib", "."]
+
+- id: code-05
+
+  category: code
+  question: "Is there a way to read a signed payload even when its signature is wrong, and is that safe?"
+  sources: [pallets/itsdangerous@2.2.0]
+  expect:
+    paths: [src/itsdangerous/serializer.py]
+    # loads_unsafe returns (signature_valid, payload) instead of raising; the docstring warns not to use it with pickle (or any unsafe serializer).
+    facts: ["loads_unsafe", "signature_valid"]
+
+- id: code-06
+
+  category: code
+  question: "What's the difference between BadPayload and BadSignature in itsdangerous?"
+  sources: [pallets/itsdangerous@2.2.0]
+  expect:
+    paths: [src/itsdangerous/exc.py]
+    # BadPayload: the signature was valid but the payload couldn't be decoded/deserialized; it keeps the cause in original_error.
+    facts: ["BadPayload", "original_error"]
+
+- id: code-07
+
+  category: code
+  question: "Why can't I use a letter or digit as the separator character in itsdangerous's Signer?"
+  sources: [pallets/itsdangerous@2.2.0]
+  expect:
+    paths: [src/itsdangerous/signer.py]
+    # Signer raises ValueError if the separator is in the URL-safe base64 alphabet, since it would be ambiguous inside the signature.
+    facts: ["ValueError", "base64"]
+
+- id: code-08
+
+  category: code
+  question: "Which hash algorithm does itsdangerous's Signer use when you don't pass digest_method?"
+  sources: [pallets/itsdangerous@2.2.0]
+  expect:
+    paths: [src/itsdangerous/signer.py]
+    # The default is SHA-1 (via _lazy_sha1).
+    facts: ["sha1"]
+
+- id: code-09
+
+  category: code
+  question: "If I catch BadSignature, will that also catch an expired timestamp error?"
+  sources: [pallets/itsdangerous@2.2.0]
+  expect:
+    paths: [src/itsdangerous/exc.py]
+    # SignatureExpired subclasses BadTimeSignature, which subclasses BadSignature, so yes.
+    facts: ["SignatureExpired", "BadTimeSignature"]
+
+- id: code-10
+
+  category: code
+  question: "How does itsdangerous make its JSON output as compact as possible?"
+  sources: [pallets/itsdangerous@2.2.0]
+  expect:
+    paths: [src/itsdangerous/_json.py]
+    # _CompactJSON.dumps uses separators=(',', ':') with no whitespace, and ensure_ascii=False.
+    facts: ["separators"]
+
+- id: code-11
+
+  category: code
+  # The right answer is 'no, it was removed'. Tests whether the agent reads the changelog.
+  question: "Can I still use itsdangerous to create JSON Web Signatures (JWS)?"
+  sources: [pallets/itsdangerous@2.2.0]
+  expect:
+    paths: [CHANGES.rst]
+    # JWS support was deprecated in 2.0 and removed in 2.1; the changelog points to a dedicated library such as Authlib.
+    facts: ["Authlib"]
+
+- id: code-12
+
+  category: code
+  question: "What does a Click program print when the user presses Ctrl+C, and where does it print it?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths: [src/click/core.py]
+    # main() turns KeyboardInterrupt/EOFError into Abort and prints 'Aborted!' to stderr, then exits with code 1.
+    facts: ["Aborted!", "stderr"]
+
+- id: code-13
+
+  category: code
+  question: "How does Click work out the name of the environment variable that triggers shell completion?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths: [src/click/core.py, src/click/shell_completion.py]
+    # _{PROG_NAME}_COMPLETE, with dashes turned into underscores and uppercased.
+    facts: ["_COMPLETE"]
+
+- id: code-14
+
+  category: code
+  question: "What happens in Click if I set clamp=True on a FloatRange that has an open bound?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths: [src/click/types.py]
+    # FloatRange raises TypeError: 'Clamping is not supported for open bounds.'
+    facts: ["TypeError"]
+
+- id: code-15
+
+  category: code
+  question: "Are click.Choice values matched case-sensitively by default?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths: [src/click/types.py]
+    # Yes: case_sensitive=True by default.
+    facts: ["case_sensitive"]
+
+- id: code-16
+
+  category: code
+  question: "When testing a Click command, how can I feed it stdin text and environment variables?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths: [src/click/testing.py]
+    # CliRunner.invoke(cli, args, input=..., env=...); both are applied inside the runner's isolation() context.
+    facts: ["input", "env"]
+
+- id: code-17
+
+  category: code
+  question: "If my Click command raises an exception during a CliRunner test, does the test crash?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths: [src/click/testing.py]
+    # No by default: catch_exceptions=True stores it in result.exception (and exit_code 1) instead of raising.
+    facts: ["catch_exceptions"]
+
+- id: code-18
+
+  category: code
+  question: "How do I make Typer show a normal Python traceback instead of its pretty one?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths: [typer/main.py]
+    # Set TYPER_STANDARD_TRACEBACK (or the older _TYPER_STANDARD_TRACEBACK) in the environment; except_hook checks it.
+    facts: ["TYPER_STANDARD_TRACEBACK"]
+
+- id: code-19
+
+  category: code
+  question: "What markup mode does Typer use for help text by default, and what decides it?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths: [typer/core.py]
+    # 'rich' when Rich is installed and TYPER_USE_RICH isn't turned off; otherwise no markup.
+    facts: ["rich", "TYPER_USE_RICH"]
+
+- id: code-20
+
+  category: code
+  question: "Does Typer 0.27 depend on the click package?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths: [pyproject.toml, typer/__init__.py]
+    # No: dependencies are shellingham and rich (plus typing helpers); Click is vendored in typer/_click and imported from there.
+    facts: ["_click"]
+
 - id: docs-01
-  draft: true
+
   category: docs
   question: In Typer, how do I make a CLI option mandatory instead of optional?
   sources: [fastapi/typer@0.27.2]
@@ -55,8 +239,153 @@
     # (or the older style: typer.Option(default=...)).
     facts: [Annotated, typer.Option]
 
+- id: docs-02
+
+  category: docs
+  question: "In Typer, how do I ask for a password without echoing it and make the user type it twice?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths: [docs/tutorial/options/password.md]
+    facts: ["hide_input", "confirmation_prompt"]
+
+- id: docs-03
+
+  category: docs
+  question: "How do I add a --version flag in Typer that runs before other options are validated?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths: [docs/tutorial/options/version.md]
+    # A callback on the option that prints and raises typer.Exit(); is_eager=True so it runs first.
+    facts: ["is_eager", "typer.Exit"]
+
+- id: docs-04
+
+  category: docs
+  question: "How can a Typer path argument insist that the file exists and is not a directory?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths: [docs/tutorial/parameter-types/path.md]
+    # Path with exists=True, file_okay=True, dir_okay=False (and resolve_path to make it absolute).
+    facts: ["exists", "dir_okay"]
+
+- id: docs-05
+
+  category: docs
+  question: "What date formats does Typer accept for a datetime parameter by default, and can I change them?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths: [docs/tutorial/parameter-types/datetime.md]
+    facts: ["%Y-%m-%d", "formats"]
+
+- id: docs-06
+
+  category: docs
+  question: "Can I stop Typer from listing an argument's environment variable in --help?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths: [docs/tutorial/arguments/envvar.md]
+    # Yes: show_envvar=False.
+    facts: ["show_envvar"]
+
+- id: docs-07
+
+  category: docs
+  question: "How do I stop a Typer program early and show that it was aborted?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths: [docs/tutorial/terminating.md]
+    # raise typer.Abort() prints 'Aborted!'; typer.Exit() exits quietly (optionally with a code).
+    facts: ["Abort", "Aborted!"]
+
+- id: docs-08
+
+  category: docs
+  question: "How do I split a Typer CLI into separate apps for users and items, each with its own subcommands?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths: [docs/tutorial/subcommands/add-typer.md]
+    facts: ["add_typer"]
+
+- id: docs-09
+
+  category: docs
+  question: "Where should a Typer app store its config file so it suits each operating system?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths: [docs/tutorial/app-dir.md]
+    facts: ["get_app_dir"]
+
+- id: docs-10
+
+  category: docs
+  question: "How do I show a progress bar while looping over items in a Typer app?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths: [docs/tutorial/progressbar.md]
+    # Rich's track() is recommended; typer.progressbar() as a context manager also works.
+    facts: ["track", "typer.progressbar"]
+
+- id: docs-11
+
+  category: docs
+  question: "Can a Typer Enum option accept 'LSTM' as well as 'lstm'?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths: [docs/tutorial/parameter-types/enum.md]
+    # case_sensitive=False on the option.
+    facts: ["case_sensitive"]
+
+- id: docs-12
+
+  category: docs
+  question: "How do I let users pass -vvv in Click to raise the verbosity level?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths: [docs/options.md]
+    # count=True; the value is 0 if the option isn't given.
+    facts: ["count=True"]
+
+- id: docs-13
+
+  category: docs
+  question: "In Click, how do I prompt for an option only when the flag is given without a value?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths: [docs/prompts.md]
+    facts: ["prompt_required=False"]
+
+- id: docs-14
+
+  category: docs
+  question: "How can every Click option be read from environment variables automatically, and how are the names built?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths: [docs/commands-and-groups.md]
+    # auto_envvar_prefix='WEB' makes the reload option of subcommand run read WEB_RUN_RELOAD.
+    facts: ["auto_envvar_prefix"]
+
+- id: docs-15
+
+  category: docs
+  question: "What do the lazy and atomic options of click.File do?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths: [docs/handling-files.md]
+    # lazy delays opening until first use (errors then raise FileError); atomic=True writes to a temp file in the same folder and moves it into place when done.
+    facts: ["lazy", "atomic"]
+
+- id: docs-16
+
+  category: docs
+  question: "Should I still use CliRunner.isolated_filesystem in Click 8.5 tests?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths: [docs/testing.md]
+    # It's deprecated in 8.5.0 and will be removed in Click 9.0; use a temporary directory with absolute paths.
+    facts: ["deprecated", "9.0"]
+
 - id: api-01
-  draft: true
+
   category: api
   question: What status codes can GET /pet/{petId} return in the Petstore API, and what do they mean?
   sources: [petstore@1.0.27]
@@ -65,8 +394,48 @@
     # 200 successful operation (a Pet), 400 invalid ID supplied, 404 pet not found.
     facts: ["200", "400", "404"]
 
+- id: api-02
+
+  category: api
+  question: "How do I list all pets that are currently available in the Petstore API?"
+  sources: [petstore@1.0.27]
+  expect:
+    paths: ["GET /pet/findByStatus"]
+    # GET /pet/findByStatus?status=available; status is required (available, pending, sold); 400 for an invalid value.
+    facts: ["status", "available"]
+
+- id: api-03
+
+  category: api
+  question: "Can I filter Petstore pets by more than one tag at once?"
+  sources: [petstore@1.0.27]
+  expect:
+    paths: ["GET /pet/findByTags"]
+    # tags is a required query array; multiple tags are comma separated.
+    facts: ["tags", "comma"]
+
+- id: api-04
+
+  category: api
+  question: "What does the Petstore inventory endpoint return?"
+  sources: [petstore@1.0.27]
+  expect:
+    paths: ["GET /store/inventory"]
+    # A map of status codes to quantities (an object of int32 values).
+    facts: ["status", "quantities"]
+
+- id: api-05
+
+  category: api
+  question: "How do I upload a photo for a pet, and what errors can that return?"
+  sources: [petstore@1.0.27]
+  expect:
+    paths: ["POST /pet/{petId}/uploadImage"]
+    # POST /pet/{petId}/uploadImage with an application/octet-stream body; 400 no file uploaded, 404 pet not found.
+    facts: ["octet-stream", "404"]
+
 - id: cross-01
-  draft: true
+
   category: cross
   # The docs page only includes the example with {* docs_src/... *}, so the code itself lives in
   # the repo: answering needs both the docs and the code.
@@ -78,11 +447,148 @@
       - docs_src/options/required/tutorial001_an_py310.py
     facts: [Annotated, typer.Option, lastname]
 
+- id: cross-02
+
+  category: cross
+  question: "Show me the Typer docs example that asks for an email twice, and explain the option that does it."
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths_all:
+      - docs/tutorial/options/password.md
+      - docs_src/options/password/tutorial001_an_py310.py
+    facts: ["confirmation_prompt", "prompt=True"]
+
+- id: cross-03
+
+  category: cross
+  question: "Show the Typer docs' final --version example and explain why is_eager is needed there."
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths_all:
+      - docs/tutorial/options/version.md
+      - docs_src/options/version/tutorial003_an_py310.py
+    facts: ["is_eager", "typer.Exit", "callback"]
+
+- id: cross-04
+
+  category: cross
+  question: "Typer's docs say to use typer.get_app_dir. What folder does it actually return on macOS?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths_all:
+      - docs/tutorial/app-dir.md
+      - typer/_click/utils.py
+    # Typer re-exports get_app_dir from its vendored Click; on macOS it's ~/Library/Application Support/<app name>.
+    facts: ["get_app_dir", "Application Support"]
+
+- id: cross-05
+
+  category: cross
+  question: 'Typer''s docs say typer.Abort prints "Aborted!". Where in Typer''s code is that printed, and to which stream?'
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths_all:
+      - docs/tutorial/terminating.md
+      - typer/core.py
+    facts: ["Aborted!", "stderr"]
+
+- id: cross-06
+
+  category: cross
+  question: "Typer's docs mention an environment variable for plain tracebacks. Where does Typer's code read it?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    paths_all:
+      - docs/tutorial/exceptions.md
+      - typer/main.py
+    facts: ["TYPER_STANDARD_TRACEBACK", "except_hook"]
+
+- id: cross-07
+
+  category: cross
+  question: "What exit codes do Click's docs promise for bad usage versus other Click errors, and where are those numbers set in the code?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths_all:
+      - docs/exceptions.md
+      - src/click/exceptions.py
+    # ClickException.exit_code = 1, UsageError.exit_code = 2; the docs say a help page shown for bad input exits with 2.
+    facts: ["UsageError", "2"]
+
+- id: cross-08
+
+  category: cross
+  question: "How do I enable Bash completion for a Click program called foo-bar, and how does Click detect the request in code?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths_all:
+      - docs/shell-completion.md
+      - src/click/core.py
+    facts: ["_FOO_BAR_COMPLETE", "bash_source"]
+
+- id: cross-09
+
+  category: cross
+  question: "Click's docs say isolated_filesystem is deprecated. What does the code actually do when I call it?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths_all:
+      - docs/testing.md
+      - src/click/testing.py
+    facts: ["DeprecationWarning"]
+
+- id: cross-10
+
+  category: cross
+  question: "Click's docs describe clamp for IntRange. What happens if I try clamp on a FloatRange with min_open=True, per the docs and the code?"
+  sources: [pallets/click@8.5.0]
+  expect:
+    paths_all:
+      - docs/parameter-types.md
+      - src/click/types.py
+    facts: ["clamp", "TypeError"]
+
 - id: absent-01
-  draft: true
+
   category: code
   # itsdangerous signs and serializes data; it has no rate limiting.
   question: How do I configure rate limiting in itsdangerous?
   sources: [pallets/itsdangerous@2.2.0]
+  expect:
+    absent: true
+
+- id: absent-02
+
+  category: code
+  # itsdangerous only signs: the payload is readable by anyone. A good answer says it doesn't encrypt.
+  question: "How do I encrypt the payload with itsdangerous so nobody can read it?"
+  sources: [pallets/itsdangerous@2.2.0]
+  expect:
+    absent: true
+
+- id: absent-03
+
+  category: api
+  # There's POST/GET/DELETE for orders but no PUT or PATCH.
+  question: "Which Petstore endpoint updates an existing store order?"
+  sources: [petstore@1.0.27]
+  expect:
+    absent: true
+
+- id: absent-04
+
+  category: docs
+  # Typer is for terminal CLIs only; nothing in the docs covers GUIs.
+  question: "How do I build a graphical window (GUI) with Typer?"
+  sources: [fastapi/typer@0.27.2]
+  expect:
+    absent: true
+
+- id: absent-05
+
+  category: code
+  # Click has no scheduling.
+  question: "Which Click decorator schedules a command to run on a cron timetable?"
+  sources: [pallets/click@8.5.0]
   expect:
     absent: true

@@ -7,6 +7,7 @@ import { API_URL, toApiError } from "@/lib/api";
 import { buildHistory } from "@/lib/history";
 import { getOwnKey } from "@/lib/own-key";
 import { createSSEParser } from "@/lib/sse";
+import { createTokenBatcher } from "@/lib/token-batcher";
 
 type Action = { type: "start"; question: string } | { type: "turn"; index: number; action: TurnAction } | { type: "clear" };
 
@@ -43,6 +44,7 @@ export function useChat() {
     if (ownKey) headers["X-Gemini-Key"] = ownKey;
 
     let finished = false;
+    let batcher: ReturnType<typeof createTokenBatcher> | null = null;
     try {
       const response = await fetch(`${API_URL}/chat`, {
         method: "POST",
@@ -57,6 +59,8 @@ export function useChat() {
       }
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
       const parser = createSSEParser();
+      // Tokens are rendered at most once per frame (see token-batcher), so the answer doesn't jitter.
+      batcher = createTokenBatcher((event, data) => to({ type: "event", event, data }));
       const handle = (messages: ReturnType<typeof parser.push>) => {
         for (const { event, data } of messages) {
           let parsed: unknown = null;
@@ -66,7 +70,7 @@ export function useChat() {
             continue; // a malformed frame: skip it rather than break the answer
           }
           if (event === "done" || event === "error") finished = true;
-          to({ type: "event", event, data: parsed });
+          batcher?.push(event, parsed);
         }
       };
       for (;;) {
@@ -75,8 +79,10 @@ export function useChat() {
         handle(parser.push(value));
       }
       handle(parser.flush());
+      batcher.flush();
       if (!finished) to({ type: "failed", code: "internal", message: "The answer was cut off." });
     } catch (error) {
+      batcher?.flush(); // show what had arrived before the stop or failure
       if (abort.signal.aborted) to({ type: "stopped" });
       else to({ type: "failed", code: "network", message: String(error) });
     } finally {
