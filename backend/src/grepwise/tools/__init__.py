@@ -1,4 +1,4 @@
-"""The tool layer: five read-only tools shared by the web agent (M4) and the MCP server (M5).
+"""The tool layer: five read-only tools, served by the MCP server and the CLI.
 
 `call_tool` is the one entry point: it validates arguments, runs the tool, and caps the
 output. It never raises; every problem comes back as {"error": {code, message, hint}}.
@@ -142,8 +142,8 @@ def call_tool(ctx: ToolContext, name: str, args: Any) -> dict[str, Any]:
         output = tool.run(ctx, inp)
     except Exception:
         log.exception("Tool %s failed", name)  # traceback goes to the log, never the output
-        # A failed statement leaves the transaction unusable; reset for the next call.
-        if not ctx.conn.closed and ctx.conn.info.transaction_status != 0:
+        # Never leave a transaction open for the next call.
+        if ctx.conn.in_transaction:
             ctx.conn.rollback()
         return _error(
             "internal",

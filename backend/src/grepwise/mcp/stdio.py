@@ -12,11 +12,10 @@ from collections.abc import Iterator
 
 import anyio
 import anyio.to_thread
-import psycopg
 from mcp.server.stdio import stdio_server
 
 from grepwise.config import Settings
-from grepwise.db.connection import connect
+from grepwise.db.connection import Conn, connect
 from grepwise.ingest.embed import Embedder, LocalEmbedder, make_embedder
 from grepwise.mcp.server import build_server
 from grepwise.tools import ToolContext
@@ -25,26 +24,21 @@ log = logging.getLogger(__name__)
 
 
 class SharedConnection:
-    """One database connection for the session, reconnected if it drops. A lock serialises
-    tool calls, since a connection can't run two queries at once."""
+    """One database connection for the session, opened on the first tool call. A lock
+    serialises tool calls, since one SQLite connection runs one statement at a time."""
 
     def __init__(self, settings: Settings, embedder: Embedder):
         self.settings = settings
         self.embedder = embedder
-        self._conn: psycopg.Connection | None = None
+        self._conn: Conn | None = None
         self._lock = threading.Lock()
 
     @contextlib.contextmanager
     def __call__(self) -> Iterator[ToolContext]:
         with self._lock:
-            if self._conn is None or self._conn.closed or self._conn.broken:
-                self._conn = connect(self.settings.database_url)
-            try:
-                yield ToolContext(self._conn, self.settings, self.embedder)
-            except psycopg.OperationalError:
-                self._conn.close()  # reconnect on the next call
-                self._conn = None
-                raise
+            if self._conn is None:
+                self._conn = connect(self.settings.db_path)
+            yield ToolContext(self._conn, self.settings, self.embedder)
 
     def close(self) -> None:
         if self._conn is not None:

@@ -110,3 +110,29 @@ The script is in the scratchpad; the proper runner is section 7.
 - [ ] Re-indexing an already indexed source reuses every embedding (the summary shows 0 created).
 - [ ] Claude Code, connected with `grepwise mcp`, answers a Typer question with valid citations, with Docker not running.
 - [ ] Vector search over all six sources takes under 5 ms once the cache is warm (print the timing in `grepwise search --verbose`).
+
+## 10. As built (differences from the plan above)
+
+- **Module layout:** the connection and schema stay in the existing `grepwise/db/` package (`connection.py`, `schema.sql`) instead of a new `store/`, so fewer imports changed. Writes stay in `ingest/store.py`.
+- **Settings use the `GREPWISE_` prefix** (`GREPWISE_HOME`, `GREPWISE_EMBEDDER`, …), and only this checkout's `.env` is read, never the current folder's. The MCP server runs inside other projects, whose environment must not leak in.
+- **Vector cache invalidation:** `sources.generation` (a fresh `time.time_ns()` on every successful index) instead of `updated_at`, which only has one-second resolution. The cache is keyed by database file too, so two databases never share entries.
+- **`sources.embedding_model`** records the model of the last successful index (it used to be a column on every chunk).
+- **FTS5 `path` column holds the raw path:** the `unicode61` tokenizer already splits on `/ _ . -`.
+- **Timing flag:** `grepwise search --timing`, not `--verbose`.
+- **Lists as SQL parameters:** one JSON array per list, read with `json_each(?)`, so every SQL string stays a constant.
+
+## 11. Results (2026-10-10)
+
+| Check | Result |
+|---|---|
+| Tests | 253 passed in about 5 s, no Docker; ruff and mypy clean |
+| `make demo-sources` | All six sources from scratch: 5,464 chunks (same as Postgres), 46.7 MB |
+| Retrieval, hybrid | Hit@5 **0.90**, MRR 0.73 (target ≥ 0.85; Postgres was 0.78) |
+| Retrieval, keyword | Hit@5 **0.82**, MRR 0.65 (target ≥ 0.80; Postgres was 0.35) |
+| Retrieval, vector | Hit@5 0.80, MRR 0.73 |
+| Vector search, warm | 0.4–0.8 ms over all six sources (target < 5 ms); cold load about 57 ms |
+| Re-index | itsdangerous: 0 created, 140 reused, 1.2 s (was 16.2 s) |
+| MCP over stdio | Real server and database via the MCP client: search, verify_citation, find_symbol, get_endpoint all correct |
+| Race | Several processes creating the database at once: fixed and tested (the test fails without the fix) |
+
+Not checked: a session in the Claude Code app itself (the `claude` CLI isn't installed on this machine). Restart Claude Code to pick up the new server.

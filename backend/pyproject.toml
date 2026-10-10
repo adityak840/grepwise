@@ -7,25 +7,18 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.142.2",
     "fastembed>=0.8.1",
-    "google-genai>=2.27.0",
     "httpx>=0.28.1",
     "markdown-it-py>=4.2.0",
     "mcp>=2.3.0",
     "numpy>=2.5.3",
-    "openai>=3.23.0",
-    "pgvector>=0.5.0",
-    "psycopg-pool>=3.3.3",
-    "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
+    "pyyaml>=6.0.3",
     # 0.26.0 corrupts Node.start_point/end_point after the first read (wrong rows, then
     # segfaults). Lift this pin only once tests/test_chunkers.py passes on the new version.
-    "pyyaml>=6.0.3",
     "tree-sitter>=0.25,<0.26",
     "tree-sitter-language-pack>=1.20.0",
     "typer>=0.27.2",
-    "uvicorn[standard]>=0.54.0",
 ]
 
 [project.scripts]
@@ -61,9 +54,9 @@ files = ["src", "tests"]
 exclude = ["tests/fixtures/"]
 
 [[tool.mypy.overrides]]
-module = ["pgvector.*", "tree_sitter_language_pack.*"]
+module = ["tree_sitter_language_pack.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["integration: needs the Docker Postgres from `make db`"]
+markers = ["integration: slower end-to-end tests (still offline)"]

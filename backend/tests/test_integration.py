@@ -1,18 +1,16 @@
-"""End to end against the Docker Postgres (`make db`), with FakeEmbedder. No network.
-
-Uses a separate `grepwise_test` database, rebuilt from scratch for each test.
-"""
+"""Indexing end to end on a fresh SQLite database, with FakeEmbedder. No network."""
 
 import shutil
 from pathlib import Path
 
 import numpy as np
-import psycopg
 import pytest
 
+from grepwise.db.connection import Conn
 from grepwise.ingest.chunkers import split_lines
 from grepwise.ingest.embed import DOCUMENT, FakeEmbedder
 from grepwise.ingest.pipeline import index_repo
+from grepwise.ingest.store import blob_to_vector
 from tests.helpers import FIXTURES, count, fake_fetcher
 
 pytestmark = pytest.mark.integration
@@ -32,7 +30,7 @@ def repo(tmp_path: Path) -> Path:
     return root
 
 
-def test_index_reindex_and_reuse(conn: psycopg.Connection, repo: Path) -> None:
+def test_index_reindex_and_reuse(conn: Conn, repo: Path) -> None:
     embedder = FakeEmbedder(768)
     first = index_repo(conn, embedder, URL, "v1", fetcher=fake_fetcher(repo))
 
@@ -45,11 +43,13 @@ def test_index_reindex_and_reuse(conn: psycopg.Connection, repo: Path) -> None:
     assert count(conn, "SELECT count(*) FROM chunks") == n_chunks
     assert count(conn, "SELECT count(*) FROM chunks WHERE symbol = 'Signer.sign'") == 0  # small
     assert count(conn, "SELECT count(*) FROM chunks WHERE symbol = 'Signer'") == 1
-    assert count(conn, "SELECT count(*) FROM chunks WHERE tsv @@ to_tsquery('simple', 'hmac')") > 0
+    assert count(conn, "SELECT count(*) FROM chunks_fts WHERE chunks_fts MATCH 'hmac'") > 0
+    assert count(conn, "SELECT count(*) FROM chunks_fts") == n_chunks
 
-    # Stored vectors are unit length (halfvec rounding stays well inside 0.001).
-    for (emb,) in conn.execute("SELECT embedding FROM chunks"):
-        assert abs(float(np.linalg.norm(emb.to_numpy().astype(np.float32))) - 1) < 1e-3
+    # Stored vectors are unit length (float16 rounding stays well inside 0.001).
+    assert count(conn, "SELECT count(*) FROM embeddings") == n_chunks
+    for (blob,) in conn.execute("SELECT vector FROM embeddings"):
+        assert abs(float(np.linalg.norm(blob_to_vector(blob))) - 1) < 1e-3
 
     # Stored content matches the file lines exactly.
     for path, start, end, content in conn.execute(
@@ -78,9 +78,7 @@ def test_index_reindex_and_reuse(conn: psycopg.Connection, repo: Path) -> None:
     assert count(conn, "SELECT count(*) FROM sources WHERE status = 'ready'") == 2
 
 
-def test_failure_marks_source_failed_and_keeps_old_chunks(
-    conn: psycopg.Connection, repo: Path
-) -> None:
+def test_failure_marks_source_failed_and_keeps_old_chunks(conn: Conn, repo: Path) -> None:
     index_repo(conn, FakeEmbedder(768), URL, "v1", fetcher=fake_fetcher(repo))
     n_chunks = count(conn, "SELECT count(*) FROM chunks")
 
@@ -96,9 +94,7 @@ def test_failure_marks_source_failed_and_keeps_old_chunks(
     assert count(conn, "SELECT count(*) FROM chunks") == n_chunks
 
 
-def test_switching_embedding_model_re_embeds_everything(
-    conn: psycopg.Connection, repo: Path
-) -> None:
+def test_switching_embedding_model_re_embeds_everything(conn: Conn, repo: Path) -> None:
     first = index_repo(conn, FakeEmbedder(768), URL, "v1", fetcher=fake_fetcher(repo))
     n_chunks = first.chunks_by_kind.total()
 
@@ -109,7 +105,7 @@ def test_switching_embedding_model_re_embeds_everything(
 
     second = index_repo(conn, OtherModel(768), URL, "v1", fetcher=fake_fetcher(repo))
     assert second.embeddings_reused == 0 and second.embeddings_created == n_chunks
-    models = {m for (m,) in conn.execute("SELECT DISTINCT embedding_model FROM chunks")}
+    models = {m for (m,) in conn.execute("SELECT embedding_model FROM sources")}
     assert models == {"other-model:768"}
 
     # Back to the first model: its vectors are still in the embedding cache, so switching back
@@ -119,7 +115,7 @@ def test_switching_embedding_model_re_embeds_everything(
 
 
 def test_a_failed_run_keeps_the_embeddings_it_made(
-    conn: psycopg.Connection, repo: Path, monkeypatch: pytest.MonkeyPatch
+    conn: Conn, repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from grepwise.ingest import pipeline
 
@@ -133,7 +129,7 @@ def test_a_failed_run_keeps_the_embeddings_it_made(
 
     with pytest.raises(RuntimeError):
         index_repo(conn, DiesOnSecondGroup(768), URL, "v1", fetcher=fake_fetcher(repo))
-    saved = count(conn, "SELECT count(*) FROM embedding_cache")
+    saved = count(conn, "SELECT count(*) FROM embeddings")
     assert saved == 2
 
     rerun = index_repo(conn, FakeEmbedder(768), URL, "v1", fetcher=fake_fetcher(repo))

@@ -1,22 +1,25 @@
-"""Hybrid search: vector + keyword, merged with reciprocal rank fusion (spec 02, section 6).
+"""Hybrid search: vector + keyword, merged with reciprocal rank fusion (spec 02, section 6;
+SQLite since v2, spec 11).
 
 All user text reaches SQL as bound parameters; the SQL strings themselves are constants.
 """
 
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
-import psycopg
-from pgvector import HalfVector
-
+from grepwise.db.connection import Conn, json_list, transaction
 from grepwise.ingest.embed import Embedder
 from grepwise.ingest.keywords import query_terms
 from grepwise.search.citations import format_citation
+from grepwise.search.vectors import vector_search
 
 RRF_K = 60
 DEFAULT_CANDIDATES = 50
 DEFAULT_TOKEN_BUDGET = 4_000
+
+Mode = Literal["hybrid", "vector", "keyword"]
 
 
 @dataclass
@@ -62,44 +65,45 @@ def rrf_merge(
     )
 
 
-def parse_sources(sources: Sequence[str] | None) -> tuple[list[str], list[str]] | None:
-    """['pallets/itsdangerous', 'petstore@1.0.27'] -> (names, versions); '' = any version."""
+def parse_sources(sources: Sequence[str] | None) -> list[tuple[str, str]] | None:
+    """['pallets/itsdangerous', 'petstore@1.0.27'] -> [(name, version)]; '' = any version."""
     if not sources:
         return None
-    names, versions = [], []
-    for s in sources:
-        name, _, version = s.partition("@")
-        names.append(name)
-        versions.append(version)
-    return names, versions
+    return [(name, version) for name, _, version in (s.partition("@") for s in sources)]
 
 
+def matching_sources(conn: Conn, sources: Sequence[str] | None) -> list[tuple[int, int]]:
+    """(id, generation) of every source matching 'name' or 'name@version' (all if None)."""
+    wanted = parse_sources(sources)
+    rows = conn.execute("SELECT id, name, version, generation FROM sources ORDER BY id")
+    return [
+        (sid, gen)
+        for sid, name, version, gen in rows
+        if wanted is None or any(n == name and v in ("", version) for n, v in wanted)
+    ]
+
+
+# Source and kind filters, as JSON lists (NULL = no filter). Used by search and find_symbol.
 FILTERS_SQL = """
-  AND (%(f_names)s::text[] IS NULL OR EXISTS (
-        SELECT 1 FROM unnest(%(f_names)s::text[], %(f_versions)s::text[]) AS f(name, version)
-        WHERE f.name = s.name AND (f.version = '' OR f.version = s.version)))
-  AND (%(f_kinds)s::text[] IS NULL OR c.kind = ANY(%(f_kinds)s::text[]))
+  AND (:source_ids IS NULL OR c.source_id IN (SELECT value FROM json_each(:source_ids)))
+  AND (:kinds IS NULL OR c.kind IN (SELECT value FROM json_each(:kinds)))
 """
 
-_VECTOR_SQL = f"""
-WITH ranked AS MATERIALIZED (
-  SELECT c.id, c.embedding <=> %(q)s AS distance
-  FROM chunks c JOIN sources s ON s.id = c.source_id
-  WHERE c.embedding_model = %(model)s {FILTERS_SQL}
-  ORDER BY c.embedding <=> %(q)s
-  LIMIT %(n)s
-)
-SELECT id FROM ranked ORDER BY distance, id
-"""  # relaxed_order can return near-ordered rows, hence the re-sort
+
+def filter_params(
+    conn: Conn, sources: Sequence[str] | None, kinds: Sequence[str] | None
+) -> dict[str, Any]:
+    ids = [sid for sid, _ in matching_sources(conn, sources)] if sources else None
+    return {"source_ids": json_list(ids), "kinds": json_list(kinds) if kinds else None}
+
 
 _KEYWORD_SQL = f"""
-WITH q AS (SELECT to_tsquery('english', %(tsq)s) || to_tsquery('simple', %(tsq)s) AS query)
-SELECT c.id
-FROM chunks c JOIN sources s ON s.id = c.source_id, q
-WHERE c.tsv @@ q.query {FILTERS_SQL}
-ORDER BY ts_rank_cd(c.tsv, q.query) DESC, c.id
-LIMIT %(n)s
-"""
+SELECT chunks_fts.rowid
+FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid
+WHERE chunks_fts MATCH :match {FILTERS_SQL}
+ORDER BY chunks_fts.rank, c.id
+LIMIT :n
+"""  # rank = BM25: words that are rare across all chunks count for more
 
 _DETAILS_SQL = """
 SELECT c.id, s.name, s.version, s.type, d.path, c.kind, c.symbol,
@@ -107,44 +111,27 @@ SELECT c.id, s.name, s.version, s.type, d.path, c.kind, c.symbol,
 FROM chunks c
 JOIN documents d ON d.id = c.document_id
 JOIN sources s ON s.id = c.source_id
-WHERE c.id = ANY(%s)
+WHERE c.id IN (SELECT value FROM json_each(?))
 """
 
 
-def filter_params(sources: Sequence[str] | None, kinds: Sequence[str] | None) -> dict[str, Any]:
-    parsed = parse_sources(sources)
-    return {
-        "f_names": parsed[0] if parsed else None,
-        "f_versions": parsed[1] if parsed else None,
-        "f_kinds": list(kinds) if kinds else None,
-    }
-
-
-def vector_search(
-    conn: psycopg.Connection, q: HalfVector, model_id: str, filters: dict[str, Any], n: int
-) -> list[int]:
-    """Call inside a transaction: the SET LOCALs last until it ends."""
-    conn.execute("SET LOCAL hnsw.ef_search = 100")
-    # pgvector 0.8+: keep scanning the index until enough rows pass the filters.
-    conn.execute("SET LOCAL hnsw.iterative_scan = relaxed_order")
-    params = {"q": q, "model": model_id, "n": n, **filters}
-    return [row[0] for row in conn.execute(_VECTOR_SQL, params)]
-
-
-def keyword_search(
-    conn: psycopg.Connection, query: str, filters: dict[str, Any], n: int
-) -> list[int]:
+def fts_query(query: str) -> str | None:
+    """'How do I sign?' -> '"how" OR "do" OR "i" OR "sign"'. Every term is quoted, and terms
+    are letters and digits only (see query_terms), so nothing can be read as FTS5 syntax."""
     terms = query_terms(query)
-    if not terms:
+    return " OR ".join(f'"{t}"' for t in terms) if terms else None
+
+
+def keyword_search(conn: Conn, query: str, filters: dict[str, Any], n: int) -> list[int]:
+    match = fts_query(query)
+    if match is None:
         return []
-    # OR between words: a natural question's words won't all be in one chunk. Terms are
-    # letters and digits only (see query_terms), and still passed as a parameter.
-    params = {"tsq": " | ".join(terms), "n": n, **filters}
+    params = {"match": match, "n": n, **filters}
     return [row[0] for row in conn.execute(_KEYWORD_SQL, params)]
 
 
 def search(
-    conn: psycopg.Connection,
+    conn: Conn,
     embedder: Embedder,
     query: str,
     *,
@@ -153,19 +140,33 @@ def search(
     limit: int = 10,
     token_budget: int | None = DEFAULT_TOKEN_BUDGET,  # None: no budget, just `limit`
     candidates: int = DEFAULT_CANDIDATES,
+    mode: Mode = "hybrid",
+    timings: dict[str, float] | None = None,  # filled with milliseconds per step, if given
 ) -> list[SearchResult]:
-    filters = filter_params(sources, kinds)
-    q = HalfVector(embedder.embed_query(query))  # network call: before the transaction opens
-    # One REPEATABLE READ transaction = one snapshot for all three queries, so a re-index
-    # that swaps this source's chunks mid-search can't make the details lookup miss ids.
-    with conn.transaction():
-        conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
-        merged = rrf_merge(
-            vector_search(conn, q, embedder.model_id, filters, candidates),
-            keyword_search(conn, query, filters, candidates),
-        )
+    clock = time.perf_counter
+    started = clock()
+    q = embedder.embed_query(query) if mode != "keyword" else None  # before the transaction
+    embedded = clock()
+    # One read transaction = one snapshot for every query below, so a re-index that swaps this
+    # source's chunks mid-search can't make the details lookup miss ids.
+    with transaction(conn):
+        matched = matching_sources(conn, sources)
+        filters = filter_params(conn, sources, kinds)
+        vec: list[int] = []
+        if q is not None:
+            vec = vector_search(conn, q, embedder.model_id, matched, kinds, candidates)
+        vectored = clock()
+        kw = keyword_search(conn, query, filters, candidates) if mode != "vector" else []
+        keyworded = clock()
+        merged = rrf_merge(vec, kw)
         ids = [r.chunk_id for r in merged]
-        rows = {row[0]: row for row in conn.execute(_DETAILS_SQL, (ids,))} if ids else {}
+        rows = {row[0]: row for row in conn.execute(_DETAILS_SQL, (json_list(ids),))}
+    if timings is not None:
+        timings.update(
+            embed=(embedded - started) * 1000,
+            vector=(vectored - embedded) * 1000,
+            keyword=(keyworded - vectored) * 1000,
+        )
 
     results: list[SearchResult] = []
     tokens = 0

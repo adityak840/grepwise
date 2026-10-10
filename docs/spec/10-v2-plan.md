@@ -111,12 +111,16 @@ What it decided:
 - **Keyword-only results are good enough to answer straight away** while embeddings fill in, so on-demand indexing (N3) is realistic.
 - Code questions are the weakest category (0.70 at best). Look at the misses in N3.
 
+**After N1 (SQLite, real index):** hybrid Hit@5 **0.90** (MRR 0.73), keyword 0.82, vector 0.80. Warm vector search over 5,464 chunks: 0.4–0.8 ms. For N3:
+- Still missed by hybrid: code-12, code-13, code-16, code-19, code-20 (Click and Typer internals: `main()`'s abort handling, the completion env var, `CliRunner.invoke`, Typer's markup mode, Typer's dependencies in `pyproject.toml`).
+- **Duplicate results:** a repo and its docs folder indexed as two sources with the same `name@version` produce identical citations (e.g. Typer's `required.md` twice in the top 3). Deduplicate by citation, or skip the docs folder in the repo index when a docs source covers it.
+
 ## 9. Milestones
 
 | # | What | Rough effort |
 |---|---|---|
 | **N0** | Measure (done, section 8) | done |
-| **N1** | Slim down: archive tag, remove the agent, API and web UI; SQLite storage; retrieval eval runner. Spec: [11-n1-slim-sqlite.md](11-n1-slim-sqlite.md) | 1.5 days |
+| **N1** | Slim down: archive tag, remove the agent, API and web UI; SQLite storage; retrieval eval runner. Spec: [11-n1-slim-sqlite.md](11-n1-slim-sqlite.md) | **done** (2026-10-10): hybrid Hit@5 0.90 |
 | **N2** | Project awareness: lockfile parsing, package → repo → tag → docs resolution, `grepwise add` (name, URL, local path), `known_sources.toml`, RST docs | 1.5 days |
 | **N3** | The new MCP surface: three tools, on-demand indexing, background embeddings, links, server instructions | 1.5 days |
 | **N4** | Install and onboarding: `uv tool install`, `grepwise setup`, `doctor`, `gc` | 0.5 day |

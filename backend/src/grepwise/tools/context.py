@@ -2,15 +2,14 @@
 
 from dataclasses import dataclass, field
 
-import psycopg
-
 from grepwise.config import Settings
+from grepwise.db.connection import Conn
 from grepwise.ingest.embed import Embedder, make_embedder
 
 
 @dataclass
 class ToolContext:
-    conn: psycopg.Connection
+    conn: Conn
     settings: Settings
     _embedder: Embedder | None = field(default=None, repr=False)
 

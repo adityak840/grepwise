@@ -2,9 +2,9 @@
 
 import difflib
 
-import psycopg
 from pydantic import BaseModel, ConfigDict, Field
 
+from grepwise.db.connection import Conn
 from grepwise.ingest.chunkers import split_lines
 from grepwise.search.citations import format_citation
 from grepwise.tools.caps import OVERHEAD_CHARS
@@ -13,14 +13,14 @@ from grepwise.tools.errors import ToolFailure, returns_tool_errors
 from grepwise.tools.sources import resolve_one
 
 
-def load_document(conn: psycopg.Connection, name: str, version: str, path: str) -> list[str]:
+def load_document(conn: Conn, name: str, version: str, path: str) -> list[str]:
     """The document's lines. A repo and its docs may share a name; the same path at the same
     version has the same content in both, so any match will do."""
     row = conn.execute(
         """
         SELECT d.content FROM documents d JOIN sources s ON s.id = d.source_id
-        WHERE s.name = %s AND s.version = %s AND d.path = %s
-        ORDER BY d.content IS NULL, s.type LIMIT 1
+        WHERE s.name = ? AND s.version = ? AND d.path = ?
+        ORDER BY s.type LIMIT 1
         """,
         (name, version, path),
     ).fetchone()
@@ -29,7 +29,7 @@ def load_document(conn: psycopg.Connection, name: str, version: str, path: str) 
             r[0]
             for r in conn.execute(
                 "SELECT d.path FROM documents d JOIN sources s ON s.id = d.source_id "
-                "WHERE s.name = %s AND s.version = %s",
+                "WHERE s.name = ? AND s.version = ?",
                 (name, version),
             )
         ]
@@ -40,12 +40,6 @@ def load_document(conn: psycopg.Connection, name: str, version: str, path: str) 
             f"No file {path!r} in {name}@{version}.",
             f"{hint}Paths are relative to the repo root; use search or find_symbol to find "
             "the right path.",
-        )
-    if row[0] is None:
-        raise ToolFailure(
-            "not_reindexed",
-            f"{name}@{version} was indexed before file text was stored.",
-            "Re-index this source to make its files readable; search still works meanwhile.",
         )
     return split_lines(row[0])
 

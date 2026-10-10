@@ -1,27 +1,20 @@
-"""The MCP server: in-memory client, a real stdio subprocess, and /mcp over HTTP. Offline."""
+"""The MCP server: an in-memory client and a real stdio subprocess. Offline."""
 
 import json
 import os
 import subprocess
 import sys
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import anyio
-import psycopg
 import pytest
-from fastapi.testclient import TestClient
 from mcp.client.client import Client
 from mcp.shared.exceptions import MCPError
 from mcp.types import TextResourceContents
-from pgvector.psycopg import register_vector
-from psycopg_pool import ConnectionPool
-from pydantic import SecretStr
 
-from grepwise.agent.llm import ScriptedClient, text
-from grepwise.api.app import create_app
 from grepwise.config import get_settings
+from grepwise.db.connection import Conn
 from grepwise.ingest.embed import FakeEmbedder
 from grepwise.mcp.server import SOURCES_URI, build_server, fixed_context, source_uri
 from grepwise.tools import ToolContext, call_tool, tool_schemas
@@ -30,7 +23,7 @@ HANDSHAKE_VERSION = "2025-11-25"  # the classic initialize handshake most client
 
 
 @pytest.fixture
-def ctx(indexed: psycopg.Connection, embedder: FakeEmbedder) -> ToolContext:
+def ctx(indexed: Conn, embedder: FakeEmbedder) -> ToolContext:
     return ToolContext(indexed, get_settings(), embedder)
 
 
@@ -189,10 +182,9 @@ def rpc(id_: int | None, method: str, params: dict[str, Any] | None = None) -> s
     return json.dumps(msg) + "\n"
 
 
-def test_stdio_smoke_stdout_carries_only_protocol(indexed: psycopg.Connection,
-                                                   empty_db_url: str) -> None:  # fmt: skip
+def test_stdio_smoke_stdout_carries_only_protocol(indexed: Conn, db_path: Path) -> None:
     script = Path(sys.executable).parent / "grepwise"
-    env = {**os.environ, "DATABASE_URL": empty_db_url, "EMBEDDER": "fake"}
+    env = {**os.environ, "GREPWISE_HOME": str(db_path.parent), "GREPWISE_EMBEDDER": "fake"}
     env.pop("VIRTUAL_ENV", None)
     hello = {
         "protocolVersion": HANDSHAKE_VERSION,
@@ -229,90 +221,3 @@ def test_stdio_smoke_stdout_carries_only_protocol(indexed: psycopg.Connection,
     call = by_id[3]["result"]
     assert call["isError"] is False
     assert {s["ref"] for s in call["structuredContent"]["sources"]} >= {"petstore@1.0.27"}
-
-
-# --- HTTP --------------------------------------------------------------------------------
-
-
-@pytest.fixture
-def pool(indexed: psycopg.Connection, empty_db_url: str) -> Iterator[ConnectionPool]:
-    with ConnectionPool(
-        empty_db_url, min_size=1, max_size=3, configure=register_vector,
-        kwargs={"autocommit": True},
-    ) as p:  # fmt: skip
-        yield p
-
-
-def http_client(pool: ConnectionPool, **overrides: Any) -> TestClient:
-    settings = get_settings().model_copy(update={"mcp_allowed_hosts": "testserver", **overrides})
-    app = create_app(settings, pool=pool, embedder=FakeEmbedder(768),
-                     llm_factory=lambda: ScriptedClient([text("hi")]))  # fmt: skip
-    return TestClient(app)
-
-
-HEADERS = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
-
-
-def post(client: TestClient, body: str, **headers: str) -> Any:
-    return client.post("/mcp", content=body, headers={**HEADERS, **headers})
-
-
-INIT = rpc(1, "initialize", {
-    "protocolVersion": HANDSHAKE_VERSION, "capabilities": {},
-    "clientInfo": {"name": "http-test", "version": "1"},
-})  # fmt: skip
-
-
-def test_http_list_and_call_tools(pool: ConnectionPool) -> None:
-    with http_client(pool) as client:
-        init = post(client, INIT)
-        assert init.status_code == 200, init.text
-        assert init.json()["result"]["serverInfo"]["name"] == "grepwise"
-        version = {"MCP-Protocol-Version": HANDSHAKE_VERSION}
-        tools = post(client, rpc(2, "tools/list"), **version).json()["result"]["tools"]
-        assert len(tools) == 6
-        call = post(client, rpc(3, "tools/call", {"name": "find_symbol",
-                    "arguments": {"name": "Signer"}}), **version).json()["result"]  # fmt: skip
-        assert call["isError"] is False
-        assert call["structuredContent"]["matches"][0]["symbol"] == "Signer"
-        # The rest of the API still works alongside /mcp.
-        assert client.get("/health").json()["ok"] is True
-        assert client.post("/chat", json={"question": "hi"}).status_code == 200
-
-
-def test_http_anonymous_rate_limit(pool: ConnectionPool) -> None:
-    with http_client(pool, mcp_rate_per_minute=2) as client:
-        assert post(client, INIT).status_code == 200
-        assert post(client, INIT).status_code == 200
-        limited = post(client, INIT)
-    assert limited.status_code == 429
-    assert limited.json()["error"]["code"] == "rate_limited"
-    assert 1 <= int(limited.headers["retry-after"]) <= 60
-
-
-def test_http_api_key_gets_the_higher_limit(pool: ConnectionPool) -> None:
-    with http_client(pool, mcp_rate_per_minute=1, mcp_key_rate_per_minute=5,
-                     mcp_api_keys=SecretStr("first-key, second-key")) as client:  # fmt: skip
-        for _ in range(5):
-            assert post(client, INIT, Authorization="Bearer second-key").status_code == 200
-        assert post(client, INIT, Authorization="Bearer second-key").status_code == 429
-        assert post(client, INIT).status_code == 200  # anonymous has its own allowance
-
-
-@pytest.mark.parametrize("auth", ["Bearer wrong-key", "Bearer ", "Basic Zmlyc3Qta2V5", "first-key"])
-def test_http_wrong_key_is_401_not_anonymous(pool: ConnectionPool, auth: str) -> None:
-    with http_client(pool, mcp_api_keys=SecretStr("first-key")) as client:
-        response = post(client, INIT, Authorization=auth)
-    assert response.status_code == 401
-    assert response.headers["www-authenticate"].startswith("Bearer")
-    assert "first-key" not in response.text
-
-
-def test_http_rejects_big_bodies_and_unknown_hosts(pool: ConnectionPool) -> None:
-    big = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {"x": "y" * 70_000}})
-    with http_client(pool) as client:
-        assert post(client, big).status_code == 413
-        rebinding = client.post("/mcp", content=INIT, headers={**HEADERS, "Host": "evil.example"})
-        assert rebinding.status_code in (400, 403, 421)
-        browser = post(client, INIT, Origin="http://evil.example")
-        assert browser.status_code in (400, 403)

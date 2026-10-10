@@ -1,8 +1,8 @@
-"""Checking a citation against the database. M4 drops any citation that doesn't verify."""
+"""Checking a citation against the database: the source, path and lines must exist."""
 
-import psycopg
 from pydantic import BaseModel
 
+from grepwise.db.connection import Conn
 from grepwise.search.citations import CitationError, parse_citation
 from grepwise.tools.errors import ToolError, ToolFailure, returns_tool_errors
 from grepwise.tools.read_file import load_document
@@ -18,7 +18,7 @@ class VerifiedCitation(BaseModel):
 
 
 @returns_tool_errors
-def verify_citation(conn: psycopg.Connection, citation: str) -> VerifiedCitation:
+def verify_citation(conn: Conn, citation: str) -> VerifiedCitation:
     try:
         c = parse_citation(citation)
     except CitationError:
@@ -28,7 +28,7 @@ def verify_citation(conn: psycopg.Connection, citation: str) -> VerifiedCitation
             "Use the form name@version:path:L<start>-L<end>, copied from a tool result.",
         ) from None
     known = conn.execute(
-        "SELECT 1 FROM sources WHERE name = %s AND version = %s LIMIT 1", (c.name, c.version)
+        "SELECT 1 FROM sources WHERE name = ? AND version = ? LIMIT 1", (c.name, c.version)
     ).fetchone()
     if known is None:
         raise ToolFailure(

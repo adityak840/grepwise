@@ -4,8 +4,7 @@ from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 
-import psycopg
-
+from grepwise.db.connection import Conn
 from grepwise.ingest.fetch import Checkout
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -26,7 +25,7 @@ def fake_fetcher(
     return fetch
 
 
-def count(conn: psycopg.Connection, sql: str) -> int:
+def count(conn: Conn, sql: str) -> int:
     row = conn.execute(sql).fetchone()
     assert row is not None
     return int(row[0])

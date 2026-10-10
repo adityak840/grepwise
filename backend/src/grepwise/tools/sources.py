@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from grepwise.db.connection import json_list
 from grepwise.tools.context import ToolContext
 from grepwise.tools.errors import ToolFailure, returns_tool_errors
 
@@ -20,8 +21,8 @@ def split_ref(ref: str) -> tuple[str, str | None]:
 def _known(ctx: ToolContext, types: Sequence[str] | None) -> list[tuple[str, str]]:
     rows = ctx.conn.execute(
         "SELECT DISTINCT name, version FROM sources "
-        "WHERE %(types)s::text[] IS NULL OR type = ANY(%(types)s::text[]) ORDER BY 1, 2",
-        {"types": list(types) if types else None},
+        "WHERE ?1 IS NULL OR type IN (SELECT value FROM json_each(?1)) ORDER BY 1, 2",
+        (json_list(types) if types else None,),
     ).fetchall()
     return [(str(n), str(v)) for n, v in rows]
 
@@ -109,12 +110,12 @@ def list_sources(ctx: ToolContext, inp: ListSourcesInput) -> ListSourcesOutput:
         SELECT s.name, s.version, s.type, s.status, s.subpath, s.updated_at,
                (SELECT count(*) FROM documents d WHERE d.source_id = s.id),
                (SELECT count(*) FROM chunks c WHERE c.source_id = s.id),
-               (SELECT max(c.embedding_model) FROM chunks c WHERE c.source_id = s.id)
+               s.embedding_model
         FROM sources s
-        WHERE %(type)s::text IS NULL OR s.type = %(type)s
+        WHERE ?1 IS NULL OR s.type = ?1
         ORDER BY s.name, s.version, s.type
         """,
-        {"type": inp.type},
+        (inp.type,),
     ).fetchall()
     return ListSourcesOutput(
         sources=[
@@ -125,7 +126,7 @@ def list_sources(ctx: ToolContext, inp: ListSourcesInput) -> ListSourcesOutput:
                 documents=docs,
                 chunks=chunks,
                 subpath=subpath,
-                indexed_at=updated.isoformat(timespec="seconds"),
+                indexed_at=updated,
                 embedding_model=model,
             )
             for name, version, type_, status, subpath, updated, docs, chunks, model in rows

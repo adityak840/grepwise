@@ -14,8 +14,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from typing import Any
 
-import psycopg
-
+from grepwise.db.connection import Conn
 from grepwise.ingest import fetch, store
 from grepwise.ingest.chunkers import split_lines
 from grepwise.ingest.chunkers.code import chunk_file
@@ -68,7 +67,7 @@ def _document(
 
 
 def _index(
-    conn: psycopg.Connection,
+    conn: Conn,
     embedder: Embedder,
     *,
     type_: str,
@@ -99,7 +98,7 @@ def _index(
         _embed_and_save(conn, embedder, todo, embeddings)
 
         store.replace_content(
-            conn, source_id, summary.commit_sha or None, documents, embeddings, embedder.model_id
+            conn, source_id, summary.commit_sha or None, documents, embedder.model_id
         )
     except BaseException as exc:
         # Don't let a failure to record the failure hide the original error.
@@ -111,7 +110,7 @@ def _index(
 
 
 def _embed_and_save(
-    conn: psycopg.Connection,
+    conn: Conn,
     embedder: Embedder,
     todo: dict[str, str],
     embeddings: dict[str, Vector],
@@ -128,7 +127,7 @@ def _embed_and_save(
 
 
 def index_repo(
-    conn: psycopg.Connection,
+    conn: Conn,
     embedder: Embedder,
     url: str,
     ref: str,
@@ -159,7 +158,7 @@ def index_repo(
 
 
 def index_docs(
-    conn: psycopg.Connection,
+    conn: Conn,
     embedder: Embedder,
     url: str,
     ref: str,
@@ -193,7 +192,7 @@ def index_docs(
 
 
 def index_openapi(
-    conn: psycopg.Connection,
+    conn: Conn,
     embedder: Embedder,
     location: str,
     name: str,

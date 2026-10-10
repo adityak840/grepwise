@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from grepwise.db.connection import json_list
 from grepwise.ingest.chunkers.openapi import HTTP_METHODS
 from grepwise.search.citations import format_citation
 from grepwise.tools.context import ToolContext
@@ -109,7 +110,7 @@ def _load(ctx: ToolContext, source: str | None) -> list[_Doc]:
         SELECT s.name, s.version, d.path, d.line_count
         FROM documents d JOIN sources s ON s.id = d.source_id
         WHERE s.type = 'openapi'
-          AND (%(name)s::text IS NULL OR (s.name = %(name)s AND s.version = %(version)s))
+          AND (:name IS NULL OR (s.name = :name AND s.version = :version))
         ORDER BY s.name, s.version, d.path
         """,
         {"name": resolved[0] if resolved else None, "version": resolved[1] if resolved else None},
@@ -127,11 +128,11 @@ def _contents(ctx: ToolContext, docs: list[_Doc]) -> dict[tuple[str, str, str], 
         """
         SELECT s.name, s.version, d.path, d.content
         FROM documents d JOIN sources s ON s.id = d.source_id
-        JOIN unnest(%s::text[], %s::text[], %s::text[]) AS m(name, version, path)
-          ON m.name = s.name AND m.version = s.version AND m.path = d.path
+        JOIN json_each(?) AS m
+          ON m.value ->> 0 = s.name AND m.value ->> 1 = s.version AND m.value ->> 2 = d.path
         WHERE s.type = 'openapi'
         """,
-        ([d.name for d in docs], [d.version for d in docs], [d.path for d in docs]),
+        (json_list([[d.name, d.version, d.path] for d in docs]),),
     ).fetchall()
     return {(n, v, p): c or "" for n, v, p, c in rows}
 

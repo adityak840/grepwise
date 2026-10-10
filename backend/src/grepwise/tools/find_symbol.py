@@ -16,21 +16,21 @@ _MAX_ROWS = 200  # chunk rows fetched before merging windows into matches
 # Both branches use indexes: (symbol), (symbol_short), (lower(symbol)), (lower(symbol_short)).
 _EXACT_SQL = f"""
 SELECT s.name, s.version, d.path, c.kind, c.symbol, c.start_line, c.end_line, c.content,
-       c.symbol = %(name)s AS qualified
+       c.symbol = :name AS qualified
 FROM chunks c JOIN documents d ON d.id = c.document_id JOIN sources s ON s.id = c.source_id
-WHERE (c.symbol = %(name)s OR c.symbol_short = %(name)s) {FILTERS_SQL}
+WHERE (c.symbol = :name OR c.symbol_short = :name) {FILTERS_SQL}
 ORDER BY qualified DESC, s.name, s.version, d.path, c.start_line
-LIMIT %(n)s
+LIMIT :n
 """
 
 _CASELESS_SQL = f"""
 SELECT s.name, s.version, d.path, c.kind, c.symbol, c.start_line, c.end_line, c.content,
-       lower(c.symbol) = lower(%(name)s) AS qualified
+       lower(c.symbol) = lower(:name) AS qualified
 FROM chunks c JOIN documents d ON d.id = c.document_id JOIN sources s ON s.id = c.source_id
-WHERE (lower(c.symbol) = lower(%(name)s) OR lower(c.symbol_short) = lower(%(name)s))
+WHERE (lower(c.symbol) = lower(:name) OR lower(c.symbol_short) = lower(:name))
   {FILTERS_SQL}
 ORDER BY qualified DESC, s.name, s.version, d.path, c.start_line
-LIMIT %(n)s
+LIMIT :n
 """
 
 _COMMENT_PREFIXES = ("#", "//", "/*", "*", '"""', "'''")
@@ -111,7 +111,8 @@ def _merge(rows: list[Any]) -> list[SymbolMatch]:
 @returns_tool_errors
 def find_symbol(ctx: ToolContext, inp: FindSymbolInput) -> FindSymbolOutput:
     check_refs(ctx, inp.sources)
-    params = {"name": inp.name.strip(), "n": _MAX_ROWS, **filter_params(inp.sources, inp.kinds)}
+    filters = filter_params(ctx.conn, inp.sources, inp.kinds)
+    params = {"name": inp.name.strip(), "n": _MAX_ROWS, **filters}
     rows = ctx.conn.execute(_EXACT_SQL, params).fetchall()
     caseless = not rows
     if caseless:

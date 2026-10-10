@@ -1,16 +1,17 @@
 """The M3 tool layer, end to end on the test database (FakeEmbedder; no network)."""
 
 import json
+from pathlib import Path
 from typing import Any
 
 import jsonschema
-import psycopg
 import pytest
 from rich.console import Console
 from typer.testing import CliRunner
 
 from grepwise import cli
 from grepwise.config import Settings, get_settings
+from grepwise.db.connection import Conn
 from grepwise.ingest.embed import FakeEmbedder
 from grepwise.ingest.pipeline import index_openapi, index_repo
 from grepwise.search.hybrid import search as hybrid_search
@@ -28,7 +29,7 @@ def settings(**overrides: Any) -> Settings:
 
 
 @pytest.fixture
-def ctx(indexed: psycopg.Connection, embedder: FakeEmbedder) -> ToolContext:
+def ctx(indexed: Conn, embedder: FakeEmbedder) -> ToolContext:
     index_repo(indexed, embedder, BIG_URL, "1.0", fetcher=fake_fetcher(FIXTURES / "chunkers"))
     return ToolContext(indexed, settings(), embedder)
 
@@ -107,7 +108,7 @@ def test_list_sources(ctx: ToolContext) -> None:
         docs, chunks = ctx.conn.execute(
             "SELECT (SELECT count(*) FROM documents d WHERE d.source_id = s.id), "
             "(SELECT count(*) FROM chunks c WHERE c.source_id = s.id) "
-            "FROM sources s WHERE name = %s AND version = %s",
+            "FROM sources s WHERE name = ? AND version = ?",
             (name, version),
         ).fetchone() or (None, None)
         assert (s["documents"], s["chunks"]) == (docs, chunks)
@@ -208,12 +209,6 @@ def test_read_ambiguous_source(ctx: ToolContext, embedder: FakeEmbedder) -> None
     assert not is_error(call(ctx, "read_file", source="example/mini_repo@v2", path="README.md"))
 
 
-def test_read_pre_m2_document(ctx: ToolContext) -> None:
-    ctx.conn.execute("UPDATE documents SET content = NULL WHERE path = 'README.md'")
-    result = call(ctx, "read_file", source="example/mini_repo", path="README.md")
-    assert error_code(result) == "not_reindexed"
-
-
 # --- find_symbol -------------------------------------------------------------------------
 
 
@@ -265,13 +260,11 @@ def test_find_filters(ctx: ToolContext) -> None:
 
 
 def test_find_symbol_uses_an_index(ctx: ToolContext) -> None:
-    """With sequential scans disabled, the plan must still be possible through indexes."""
-    with ctx.conn.transaction():
-        ctx.conn.execute("SET LOCAL enable_seqscan = off")
-        params = {"name": "sign", "n": 200, "f_names": None, "f_versions": None, "f_kinds": None}
-        plan = "\n".join(row[0] for row in ctx.conn.execute(f"EXPLAIN {_EXACT_SQL}", params))
-    assert "Seq Scan on chunks" not in plan
-    assert "chunks_symbol_btree" in plan and "chunks_symbol_short" in plan
+    """Both name columns are looked up through their indexes, never a scan of every chunk."""
+    params = {"name": "sign", "n": 200, "source_ids": None, "kinds": None}
+    plan = "\n".join(row[3] for row in ctx.conn.execute(f"EXPLAIN QUERY PLAN {_EXACT_SQL}", params))
+    assert "SCAN c" not in plan, plan
+    assert "INDEX chunks_symbol " in plan and "INDEX chunks_symbol_short " in plan, plan
 
 
 @pytest.mark.parametrize(
@@ -427,11 +420,9 @@ def test_no_output_exceeds_the_cap(ctx: ToolContext, cap: int) -> None:
 
 
 @pytest.fixture
-def runner(
-    indexed: psycopg.Connection, empty_db_url: str, monkeypatch: pytest.MonkeyPatch
-) -> CliRunner:
-    monkeypatch.setenv("DATABASE_URL", empty_db_url)
-    monkeypatch.setenv("EMBEDDER", "fake")
+def runner(indexed: Conn, db_path: Path, monkeypatch: pytest.MonkeyPatch) -> CliRunner:
+    monkeypatch.setenv("GREPWISE_HOME", str(db_path.parent))  # db_path is <home>/grepwise.db
+    monkeypatch.setenv("GREPWISE_EMBEDDER", "fake")
     get_settings.cache_clear()
     monkeypatch.setattr(cli, "console", Console(width=300))
     return CliRunner()
