@@ -113,7 +113,9 @@ What it decided:
 
 **After N1 (SQLite, real index):** hybrid Hit@5 **0.90** (MRR 0.73), keyword 0.82, vector 0.80. Warm vector search over 5,464 chunks: 0.4–0.8 ms. For N3:
 - Still missed by hybrid: code-12, code-13, code-16, code-19, code-20 (Click and Typer internals: `main()`'s abort handling, the completion env var, `CliRunner.invoke`, Typer's markup mode, Typer's dependencies in `pyproject.toml`).
-- **Duplicate results:** a repo and its docs folder indexed as two sources with the same `name@version` produce identical citations (e.g. Typer's `required.md` twice in the top 3). Deduplicate by citation, or skip the docs folder in the repo index when a docs source covers it.
+- **The MCP server must see the user's project.** `uv run --directory <grepwise>/backend` changes the working directory to `backend/`, so a server started that way would read Grepwise's own dependencies. Use MCP roots when the client sends them, and make setup use `uv run --project` (or the installed tool, N4), which keeps the client's folder.
+- ~~Duplicate results~~: fixed in N2 (one source per library, and search drops repeated citations).
+- **Big repos:** numpy, mypy and ruff exceed the 5,000-file limit or take very long to embed. Consider indexing only the package folder, docs and examples by default.
 
 ## 9. Milestones
 
@@ -121,7 +123,7 @@ What it decided:
 |---|---|---|
 | **N0** | Measure (done, section 8) | done |
 | **N1** | Slim down: archive tag, remove the agent, API and web UI; SQLite storage; retrieval eval runner. Spec: [11-n1-slim-sqlite.md](11-n1-slim-sqlite.md) | **done** (2026-10-10): hybrid Hit@5 0.90 |
-| **N2** | Project awareness: lockfile parsing, package → repo → tag → docs resolution, `grepwise add` (name, URL, local path), `known_sources.toml`, RST docs | 1.5 days |
+| **N2** | Project awareness: lockfile parsing, package → repo → tag resolution, `grepwise add` (name, URL, local path), `known_sources.toml`, reST docs. Spec: [12-n2-project-awareness.md](12-n2-project-awareness.md) | **done** (2026-10-10): 20/20 packages resolved |
 | **N3** | The new MCP surface: three tools, on-demand indexing, background embeddings, links, server instructions | 1.5 days |
 | **N4** | Install and onboarding: `uv tool install`, `grepwise setup`, `doctor`, `gc` | 0.5 day |
 | **N5** | Prove it: Claude Code with vs. without (headless `claude -p`), a resolution eval on ~30 popular packages, README, demo video, case studies | 1.5 days |

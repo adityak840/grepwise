@@ -3,28 +3,28 @@
   "summary": {
     "all": {
       "n": 51,
-      "hit_at_5": 0.8235294117647058,
-      "mrr": 0.6487792414263003
+      "hit_at_5": 0.8431372549019608,
+      "mrr": 0.6202909299920685
     },
     "code": {
       "n": 20,
-      "hit_at_5": 0.65,
-      "mrr": 0.4655378592878593
+      "hit_at_5": 0.7,
+      "mrr": 0.5079323476702509
     },
     "docs": {
       "n": 16,
       "hit_at_5": 0.9375,
-      "mrr": 0.6878472222222223
+      "mrr": 0.575595238095238
     },
     "api": {
       "n": 5,
       "hit_at_5": 1.0,
-      "mrr": 0.8400000000000001
+      "mrr": 0.74
     },
     "cross": {
       "n": 10,
       "hit_at_5": 0.9,
-      "mrr": 0.8571428571428571
+      "mrr": 0.8566666666666667
     }
   },
   "questions": [
@@ -37,7 +37,7 @@
         "src/itsdangerous/timed.py",
         "tests/test_itsdangerous/test_timed.py",
         "src/itsdangerous/timed.py",
-        "src/itsdangerous/__init__.py"
+        "CHANGES.rst"
       ]
     },
     {
@@ -47,9 +47,9 @@
       "top_paths": [
         "src/itsdangerous/signer.py",
         "src/itsdangerous/signer.py",
-        "docs/concepts.rst",
-        "tests/test_itsdangerous/test_signer.py",
-        "src/itsdangerous/serializer.py"
+        "src/itsdangerous/serializer.py",
+        "src/itsdangerous/signer.py",
+        "tests/test_itsdangerous/test_signer.py"
       ]
     },
     {
@@ -60,8 +60,8 @@
         "docs/concepts.rst",
         "src/itsdangerous/signer.py",
         "tests/test_itsdangerous/test_signer.py",
-        "docs/concepts.rst",
-        "docs/concepts.rst"
+        "src/itsdangerous/serializer.py",
+        "src/itsdangerous/signer.py"
       ]
     },
     {
@@ -71,33 +71,33 @@
       "top_paths": [
         "src/itsdangerous/url_safe.py",
         "README.md",
-        "src/itsdangerous/url_safe.py",
         "docs/url_safe.rst",
+        "src/itsdangerous/url_safe.py",
         "docs/serializer.rst"
       ]
     },
     {
       "id": "code-05",
       "category": "code",
-      "rank": 14,
+      "rank": 10,
       "top_paths": [
         "docs/serializer.rst",
         "src/itsdangerous/timed.py",
         "src/itsdangerous/exc.py",
-        "docs/concepts.rst",
-        "CHANGES.rst"
+        "src/itsdangerous/exc.py",
+        "src/itsdangerous/exc.py"
       ]
     },
     {
       "id": "code-06",
       "category": "code",
-      "rank": 2,
+      "rank": 1,
       "top_paths": [
-        "docs/exceptions.rst",
         "src/itsdangerous/exc.py",
         "src/itsdangerous/exc.py",
         "src/itsdangerous/serializer.py",
-        "tests/test_itsdangerous/test_serializer.py"
+        "docs/serializer.rst",
+        "docs/exceptions.rst"
       ]
     },
     {
@@ -109,7 +109,7 @@
         "src/itsdangerous/signer.py",
         "src/itsdangerous/encoding.py",
         "src/itsdangerous/serializer.py",
-        "docs/serializer.rst"
+        "src/itsdangerous/signer.py"
       ]
     },
     {
@@ -132,20 +132,20 @@
         "src/itsdangerous/timed.py",
         "src/itsdangerous/timed.py",
         "src/itsdangerous/exc.py",
-        "docs/timed.rst",
-        "docs/exceptions.rst"
+        "docs/exceptions.rst",
+        "docs/timed.rst"
       ]
     },
     {
       "id": "code-10",
       "category": "code",
-      "rank": 2,
+      "rank": 4,
       "top_paths": [
+        "README.md",
+        "src/itsdangerous/url_safe.py",
         "src/itsdangerous/url_safe.py",
         "src/itsdangerous/_json.py",
-        "src/itsdangerous/url_safe.py",
-        "src/itsdangerous/_json.py",
-        "README.md"
+        "CONTRIBUTING.rst"
       ]
     },
     {
@@ -155,9 +155,9 @@
       "top_paths": [
         "CHANGES.rst",
         "CHANGES.rst",
+        "docs/serializer.rst",
         "CHANGES.rst",
-        "CHANGES.rst",
-        "docs/serializer.rst"
+        "CHANGES.rst"
       ]
     },
     {
@@ -166,22 +166,22 @@
       "rank": null,
       "top_paths": [
         "docs/utils.md",
-        "docs/utils.md",
         "docs/why.md",
-        "docs/why.md",
-        "src/click/termui.py"
+        "docs/exceptions.md",
+        "src/click/termui.py",
+        "docs/index.md"
       ]
     },
     {
       "id": "code-13",
       "category": "code",
-      "rank": 7,
+      "rank": 5,
       "top_paths": [
         "docs/shell-completion.md",
-        "docs/shell-completion.md",
-        "docs/shell-completion.md",
         "docs/faqs.md",
-        "docs/shell-completion.md"
+        "docs/shell-completion.md",
+        "docs/shell-completion.md",
+        "src/click/core.py"
       ]
     },
     {
@@ -192,8 +192,8 @@
         "src/click/types.py",
         "docs/parameter-types.md",
         "tests/test_types.py",
-        "docs/parameter-types.md",
-        "tests/test_types.py"
+        "tests/test_types.py",
+        "src/click/types.py"
       ]
     },
     {
@@ -205,25 +205,25 @@
         "src/click/types.py",
         "src/click/types.py",
         "src/click/types.py",
-        "docs/parameter-types.md"
+        "src/click/types.py"
       ]
     },
     {
       "id": "code-16",
       "category": "code",
-      "rank": 24,
+      "rank": 18,
       "top_paths": [
         "docs/faqs.md",
-        "docs/faqs.md",
-        "src/click/_termui_impl.py",
         "docs/unicode-support.md",
-        "tests/test_options.py"
+        "docs/commands-and-groups.md",
+        "src/click/_termui_impl.py",
+        "docs/options.md"
       ]
     },
     {
       "id": "code-17",
       "category": "code",
-      "rank": 12,
+      "rank": 16,
       "top_paths": [
         "tests/test_stream_lifecycle.py",
         "tests/test_testing.py",
@@ -235,19 +235,19 @@
     {
       "id": "code-18",
       "category": "code",
-      "rank": 2,
+      "rank": 1,
       "top_paths": [
-        "docs/management.md",
         "typer/main.py",
         "typer/main.py",
         "typer/rich_utils.py",
-        "docs/tutorial/typer-app.md"
+        "docs/tutorial/typer-app.md",
+        "docs/tutorial/options/help.md"
       ]
     },
     {
       "id": "code-19",
       "category": "code",
-      "rank": 9,
+      "rank": 8,
       "top_paths": [
         "docs/tutorial/commands/help.md",
         "typer/main.py",
@@ -259,58 +259,58 @@
     {
       "id": "code-20",
       "category": "code",
-      "rank": 37,
+      "rank": 31,
       "top_paths": [
         "docs/tutorial/click.md",
         "docs/release-notes.md",
-        "docs/release-notes.md",
-        "docs/release-notes.md",
-        "docs/index.md"
+        "README.md",
+        "docs/index.md",
+        "docs/release-notes.md"
       ]
     },
     {
       "id": "docs-01",
       "category": "docs",
-      "rank": 18,
+      "rank": 7,
       "top_paths": [
-        "docs/management.md",
         "docs/tutorial/options/name.md",
-        "docs/tutorial/options/help.md",
         "typer/.agents/skills/typer/SKILL.md",
-        "typer/_click/utils.py"
+        "docs/tutorial/options/help.md",
+        "docs/tutorial/arguments/optional.md",
+        "docs/tutorial/options/help.md"
       ]
     },
     {
       "id": "docs-02",
       "category": "docs",
-      "rank": 1,
+      "rank": 3,
       "top_paths": [
-        "docs/tutorial/options/password.md",
         "docs/tutorial/options/prompt.md",
-        "docs/tutorial/options/prompt.md",
+        "typer/params.py",
         "docs/tutorial/options/password.md",
-        "typer/params.py"
+        "docs/tutorial/options/password.md",
+        "docs/tutorial/prompt.md"
       ]
     },
     {
       "id": "docs-03",
       "category": "docs",
-      "rank": 2,
+      "rank": 4,
       "top_paths": [
+        "docs/tutorial/options/callback-and-context.md",
         "docs/tutorial/arguments/optional.md",
+        "docs/tutorial/install.md",
         "docs/tutorial/options/version.md",
-        "docs/tutorial/arguments/optional.md",
-        "docs/tutorial/parameter-types/uuid.md",
         "docs/tutorial/parameter-types/uuid.md"
       ]
     },
     {
       "id": "docs-04",
       "category": "docs",
-      "rank": 2,
+      "rank": 3,
       "top_paths": [
         "typer/params.py",
-        "docs/tutorial/parameter-types/path.md",
+        "docs/tutorial/arguments/optional.md",
         "docs/tutorial/parameter-types/path.md",
         "typer/params.py",
         "docs/tutorial/parameter-types/path.md"
@@ -322,22 +322,22 @@
       "rank": 1,
       "top_paths": [
         "docs/tutorial/parameter-types/datetime.md",
-        "docs/tutorial/parameter-types/datetime.md",
         "typer/_click/types.py",
         "docs/tutorial/parameter-types/datetime.md",
-        "docs/tutorial/parameter-types/bool.md"
+        "typer/params.py",
+        "typer/params.py"
       ]
     },
     {
       "id": "docs-06",
       "category": "docs",
-      "rank": 1,
+      "rank": 2,
       "top_paths": [
-        "docs/tutorial/arguments/envvar.md",
-        "docs/tutorial/arguments/envvar.md",
         "docs/environment-variables.md",
-        "typer/_click/core.py",
-        "docs/tutorial/arguments/envvar.md"
+        "docs/tutorial/arguments/envvar.md",
+        "docs/tutorial/arguments/envvar.md",
+        "docs/tutorial/arguments/envvar.md",
+        "typer/_click/core.py"
       ]
     },
     {
@@ -347,9 +347,9 @@
       "top_paths": [
         "docs/tutorial/terminating.md",
         "docs/tutorial/terminating.md",
+        "docs/tutorial/printing.md",
         "docs/tutorial/terminating.md",
-        "docs/tutorial/terminating.md",
-        "docs/tutorial/printing.md"
+        "docs/tutorial/typer-app.md"
       ]
     },
     {
@@ -358,10 +358,10 @@
       "rank": 1,
       "top_paths": [
         "docs/tutorial/subcommands/add-typer.md",
-        "docs/tutorial/subcommands/add-typer.md",
-        "docs/tutorial/subcommands/add-typer.md",
-        "docs/tutorial/commands/index.md",
-        "docs/tutorial/subcommands/nested-subcommands.md"
+        "docs/tutorial/one-file-per-command.md",
+        "docs/tutorial/subcommands/nested-subcommands.md",
+        "docs/tutorial/subcommands/index.md",
+        "docs/tutorial/commands/index.md"
       ]
     },
     {
@@ -370,10 +370,10 @@
       "rank": 1,
       "top_paths": [
         "docs/tutorial/app-dir.md",
-        "docs/tutorial/app-dir.md",
         "docs/tutorial/launch.md",
-        "docs/tutorial/launch.md",
-        "typer/_click/core.py"
+        "typer/_click/core.py",
+        "docs/tutorial/parameter-types/file.md",
+        "docs/tutorial/printing.md"
       ]
     },
     {
@@ -384,7 +384,7 @@
         "typer/_click/termui.py",
         "docs/tutorial/progressbar.md",
         "docs/tutorial/progressbar.md",
-        "docs/tutorial/progressbar.md",
+        "tests/test_progress_bar.py",
         "typer/_click/_termui_impl.py"
       ]
     },
@@ -396,8 +396,8 @@
         "docs/tutorial/parameter-types/enum.md",
         "docs/tutorial/parameter-types/enum.md",
         "docs/tutorial/parameter-types/enum.md",
-        "docs/tutorial/parameter-types/enum.md",
-        "docs/tutorial/parameter-types/enum.md"
+        "docs_src/parameter_types/enum/tutorial001_py310.py",
+        "docs_src/parameter_types/enum/tutorial002_py310.py"
       ]
     },
     {
@@ -407,44 +407,44 @@
       "top_paths": [
         "docs/options.md",
         "examples/repo/repo.py",
-        "tests/test_options.py",
+        "docs/complex.md",
         "docs/faqs.md",
-        "docs/options.md"
+        "tests/test_options.py"
       ]
     },
     {
       "id": "docs-13",
       "category": "docs",
-      "rank": 2,
+      "rank": 5,
       "top_paths": [
         "docs/options.md",
-        "docs/prompts.md",
         "docs/options.md",
         "src/click/core.py",
-        "src/click/core.py"
+        "src/click/core.py",
+        "docs/prompts.md"
       ]
     },
     {
       "id": "docs-14",
       "category": "docs",
-      "rank": 5,
+      "rank": 4,
       "top_paths": [
         "docs/parameters.md",
         "docs/parameters.md",
-        "docs/parameters.md",
         "docs/options.md",
-        "docs/commands-and-groups.md"
+        "docs/commands-and-groups.md",
+        "docs/options.md"
       ]
     },
     {
       "id": "docs-15",
       "category": "docs",
-      "rank": 4,
+      "rank": 5,
       "top_paths": [
         "src/click/utils.py",
-        "src/click/types.py",
         "tests/test_basic.py",
-        "docs/handling-files.md",
+        "src/click/types.py",
+        "docs/complex.md",
         "docs/handling-files.md"
       ]
     },
@@ -457,7 +457,7 @@
         "docs/testing.md",
         "docs/upgrade-guides.md",
         "tests/test_deprecations.py",
-        "docs/testing.md"
+        "tests/test_testing.py"
       ]
     },
     {
@@ -469,19 +469,19 @@
         "POST /pet/{petId}",
         "DELETE /pet/{petId}",
         "POST /pet/{petId}/uploadImage",
-        "POST /store/order"
+        "GET /pet/findByStatus"
       ]
     },
     {
       "id": "api-02",
       "category": "api",
-      "rank": 1,
+      "rank": 2,
       "top_paths": [
-        "GET /pet/findByStatus",
         "POST /pet/{petId}",
-        "DELETE /pet/{petId}",
+        "GET /pet/findByStatus",
         "POST /pet",
-        "PUT /pet"
+        "PUT /pet",
+        "DELETE /pet/{petId}"
       ]
     },
     {
@@ -514,8 +514,8 @@
       "rank": 5,
       "top_paths": [
         "GET /pet/findByStatus",
-        "GET /pet/{petId}",
         "POST /pet/{petId}",
+        "GET /pet/{petId}",
         "GET /pet/findByTags",
         "POST /pet/{petId}/uploadImage"
       ]
@@ -526,10 +526,10 @@
       "rank": 1,
       "top_paths": [
         "docs/tutorial/options/required.md",
-        "docs/tutorial/options/required.md",
-        "docs/tutorial/first-steps.md",
+        "docs/tutorial/options/help.md",
         "docs/tutorial/arguments/optional.md",
-        "docs/tutorial/arguments/optional.md"
+        "typer/params.py",
+        "docs/tutorial/first-steps.md"
       ]
     },
     {
@@ -539,8 +539,8 @@
       "top_paths": [
         "docs/tutorial/options/password.md",
         "docs/tutorial/options/prompt.md",
-        "docs/tutorial/options/password.md",
         "docs/tutorial/options/prompt.md",
+        "typer/params.py",
         "typer/params.py"
       ]
     },
@@ -553,7 +553,7 @@
         "docs/tutorial/options/version.md",
         "docs/tutorial/options/version.md",
         "docs/tutorial/options/version.md",
-        "docs/tutorial/options/version.md"
+        "typer/core.py"
       ]
     },
     {
@@ -564,8 +564,8 @@
         "typer/_click/utils.py",
         "docs/tutorial/printing.md",
         "typer/main.py",
-        "docs/tutorial/printing.md",
-        "scripts/docs.py"
+        "scripts/docs.py",
+        "docs/tutorial/typer-command.md"
       ]
     },
     {
@@ -574,22 +574,22 @@
       "rank": 1,
       "top_paths": [
         "docs/tutorial/terminating.md",
-        "docs/tutorial/terminating.md",
         "typer/rich_utils.py",
         "docs/tutorial/terminating.md",
-        "typer/_click/termui.py"
+        "docs/tutorial/options/version.md",
+        "docs_src/prompt/tutorial002_py310.py"
       ]
     },
     {
       "id": "cross-06",
       "category": "cross",
-      "rank": 14,
+      "rank": 15,
       "top_paths": [
         "docs/environment-variables.md",
+        "docs/tutorial/arguments/envvar.md",
         "docs/environment-variables.md",
-        "docs/tutorial/arguments/envvar.md",
-        "docs/tutorial/arguments/envvar.md",
-        "docs/tutorial/install.md"
+        "typer/_click/core.py",
+        ".env"
       ]
     },
     {
@@ -599,9 +599,9 @@
       "top_paths": [
         "docs/exceptions.md",
         "docs/exceptions.md",
-        "docs/exceptions.md",
-        "docs/exceptions.md",
-        "tests/test_formatting.py"
+        "tests/test_formatting.py",
+        "docs/contrib.md",
+        "tests/test_options.py"
       ]
     },
     {
@@ -611,9 +611,9 @@
       "top_paths": [
         "docs/shell-completion.md",
         "docs/shell-completion.md",
-        "docs/shell-completion.md",
-        "docs/shell-completion.md",
-        "docs/shell-completion.md"
+        "docs/click-concepts.md",
+        "CHANGES.md",
+        "docs/faqs.md"
       ]
     },
     {
@@ -624,8 +624,8 @@
         "docs/testing.md",
         "src/click/testing.py",
         "tests/test_deprecations.py",
-        "docs/testing.md",
-        "docs/upgrade-guides.md"
+        "docs/upgrade-guides.md",
+        "tests/test_testing.py"
       ]
     },
     {
@@ -636,7 +636,7 @@
         "tests/test_types.py",
         "docs/parameter-types.md",
         "src/click/types.py",
-        "docs/parameter-types.md",
+        "src/click/types.py",
         "tests/test_types.py"
       ]
     }

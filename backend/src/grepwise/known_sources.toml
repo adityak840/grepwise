@@ -1,0 +1,11 @@
+# Packages whose GitHub repo or tag names Grepwise can't work out from PyPI alone.
+# Your own entries go in ~/.grepwise/known_sources.toml (they win over these).
+#
+#   [package-name]
+#   repo = "https://github.com/owner/repo"   # if PyPI doesn't link it
+#   tag = "rel_{version_underscored}"        # if tags aren't 1.2.3 / v1.2.3 / name-1.2.3 / ...
+#
+# Patterns can use {version}, {version_underscored} (1_2_3) and {name}.
+
+[sqlalchemy]
+tag = "rel_{version_underscored}"

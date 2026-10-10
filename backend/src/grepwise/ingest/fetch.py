@@ -50,7 +50,7 @@ def validate_ref(ref: str) -> str:
     return ref
 
 
-def _git(*args: str, cwd: Path | None = None, action: str = "git") -> str:
+def git(*args: str, cwd: Path | None = None, action: str = "git") -> str:
     env = {
         **os.environ,
         "GIT_TERMINAL_PROMPT": "0",  # private/missing repos fail instead of asking for a password
@@ -80,14 +80,22 @@ def clone(url: str, ref: str) -> Generator[Checkout]:
     validate_ref(ref)
     with tempfile.TemporaryDirectory(prefix="grepwise-") as tmp:
         path = Path(tmp) / "repo"
-        _git(
+        git(
             # Symlinks are checked out as plain files, so nothing can point outside the clone.
             "-c", "core.symlinks=false",
             "clone", "--depth", "1", "--single-branch", "--branch", ref,
             "--", url, str(path),
             action=f"Cloning {url} at {ref!r}",
         )  # fmt: skip
-        yield Checkout(path=path, commit_sha=_git("rev-parse", "HEAD", cwd=path))
+        yield Checkout(path=path, commit_sha=git("rev-parse", "HEAD", cwd=path))
+
+
+def local_commit(folder: Path) -> str | None:
+    """The folder's current git commit, or None if it isn't inside a git repo."""
+    try:
+        return git("rev-parse", "HEAD", cwd=folder, action="Reading the commit")
+    except (FetchError, OSError):
+        return None
 
 
 @contextmanager

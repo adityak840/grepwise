@@ -169,6 +169,7 @@ def search(
         )
 
     results: list[SearchResult] = []
+    seen: set[str] = set()
     tokens = 0
     for r in merged:
         if len(results) >= limit:
@@ -176,13 +177,17 @@ def search(
         if r.chunk_id not in rows:  # can't happen within one snapshot; never crash on it
             continue
         _, name, version, type_, path, kind, symbol, start, end, content = rows[r.chunk_id]
+        citation = format_citation(name, version, path, start, end)
+        if citation in seen:
+            continue  # the same lines from a second source (e.g. a repo and its docs folder)
+        seen.add(citation)
         cost = len(content) // 4
         if token_budget is not None and results and tokens + cost > token_budget:
             break  # always return at least one result
         tokens += cost
         results.append(
             SearchResult(
-                citation=format_citation(name, version, path, start, end),
+                citation=citation,
                 source=f"{name}@{version}",
                 source_type=type_,
                 path=path,

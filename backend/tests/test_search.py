@@ -6,7 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from grepwise.db.connection import Conn, connect
+from grepwise.db import connection
+from grepwise.db.connection import SCHEMA_STEPS, Conn, connect
 from grepwise.ingest.embed import FakeEmbedder
 from grepwise.ingest.pipeline import index_docs, index_openapi, index_repo
 from grepwise.search import hybrid
@@ -247,7 +248,7 @@ def test_search_uses_one_snapshot_even_if_a_reindex_lands_mid_search(
 
 def test_schema_is_created_once_and_versioned(db_path: Path) -> None:
     with closing(connect(db_path)) as c:
-        assert c.execute("PRAGMA user_version").fetchone() == (1,)
+        assert c.execute("PRAGMA user_version").fetchone() == (len(SCHEMA_STEPS),)
         assert c.execute("PRAGMA journal_mode").fetchone() == ("wal",)
         c.execute("INSERT INTO sources (type, name, url, version) VALUES ('repo', 'a', 'u', 'v')")
     with closing(connect(db_path)) as c:  # reopening keeps the data; nothing re-applied
@@ -345,4 +346,48 @@ def test_two_processes_creating_the_database_at_once(tmp_path: Path) -> None:
         t.join()
     assert errors == []
     with closing(connect(path)) as c:
-        assert c.execute("PRAGMA user_version").fetchone() == (1,)
+        assert c.execute("PRAGMA user_version").fetchone() == (len(SCHEMA_STEPS),)
+
+
+def test_a_version_1_database_upgrades_and_keeps_its_data(
+    db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(connection, "SCHEMA_STEPS", SCHEMA_STEPS[:1])
+    with closing(connect(db_path)) as old:  # a row as N1 wrote it
+        old.execute(
+            "INSERT INTO sources (type, name, url, version, status) "
+            "VALUES ('repo', 'pallets/itsdangerous', 'u', '2.2.0', 'ready')"
+        )
+        assert old.execute("PRAGMA user_version").fetchone() == (1,)
+    monkeypatch.undo()
+    with closing(connect(db_path)) as new:
+        assert new.execute("PRAGMA user_version").fetchone() == (len(SCHEMA_STEPS),)
+        row = new.execute("SELECT name, status, ref, package FROM sources").fetchone()
+        assert row == ("pallets/itsdangerous", "ready", None, None)
+        assert count(new, "SELECT count(*) FROM resolutions") == 0
+
+
+def test_the_same_lines_from_two_sources_appear_once(conn: Conn, embedder: FakeEmbedder) -> None:
+    fetch = fake_fetcher(FIXTURES / "docs_repo")
+    index_docs(conn, embedder, DOCS_URL, "v2", "docs", fetcher=fetch)
+    index_repo(conn, embedder, DOCS_URL, "v2", fetcher=fetch)  # the repo includes docs/ too
+    results = search(conn, embedder, "required option", limit=50, token_budget=None)
+    citations = [r.citation for r in results]
+    assert len(citations) == len(set(citations))
+    assert any(r.path == "docs/tutorial/options.md" for r in results)
+
+
+def test_repo_index_splits_docs_by_heading(conn: Conn, embedder: FakeEmbedder) -> None:
+    index_repo(conn, embedder, DOCS_URL, "v2", fetcher=fake_fetcher(FIXTURES / "docs_repo"))
+    rows = conn.execute(
+        "SELECT d.path, c.kind, c.symbol, c.header FROM chunks c "
+        "JOIN documents d ON d.id = c.document_id WHERE d.path = 'docs/tutorial/options.md'"
+    ).fetchall()
+    assert rows and {kind for _, kind, _, _ in rows} == {"section"}
+    assert any(sym == "Tutorial > CLI Options > Required Options" for _, _, sym, _ in rows)
+    assert all(header.startswith("Docs: example/docs_repo\n") for *_, header in rows)
+    code = conn.execute(
+        "SELECT c.kind FROM chunks c JOIN documents d ON d.id = c.document_id "
+        "WHERE d.path = 'docs/conf.py'"
+    ).fetchall()
+    assert code and all(kind != "section" for (kind,) in code)  # code is still code

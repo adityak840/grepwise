@@ -50,18 +50,22 @@ def begin_source(
     url: str,
     version: str,
     subpath: str | None = None,
+    *,
+    ref: str | None = None,
+    package: str | None = None,
 ) -> int:
     """Create or reuse the `sources` row and mark it `indexing`. Returns its id."""
     row = conn.execute(
         f"""
-        INSERT INTO sources (type, name, url, version, subpath, status)
-        VALUES (?, ?, ?, ?, ?, 'indexing')
+        INSERT INTO sources (type, name, url, version, subpath, ref, package, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'indexing')
         ON CONFLICT (type, name, version) DO UPDATE
-          SET url = excluded.url, subpath = excluded.subpath, status = 'indexing',
-              error = NULL, updated_at = {_NOW}
+          SET url = excluded.url, subpath = excluded.subpath, ref = excluded.ref,
+              package = excluded.package, status = 'indexing', error = NULL,
+              updated_at = {_NOW}
         RETURNING id
         """,
-        (type_, name, url, version, subpath),
+        (type_, name, url, version, subpath, ref, package),
     ).fetchone()
     assert row is not None
     return int(row[0])
@@ -106,6 +110,21 @@ def delete_content(conn: Conn, source_id: int) -> None:
         (source_id,),
     )
     conn.execute("DELETE FROM documents WHERE source_id = ?", (source_id,))  # cascades to chunks
+
+
+def remove_source(conn: Conn, source_id: int) -> None:
+    """Delete a source with its documents, chunks and keyword rows (embeddings are kept)."""
+    with transaction(conn, immediate=True):
+        delete_content(conn, source_id)
+        conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
+
+
+def indexed_packages(conn: Conn) -> set[tuple[str, str]]:
+    """(package, version) of every package source that is ready."""
+    rows = conn.execute(
+        "SELECT package, version FROM sources WHERE package IS NOT NULL AND status = 'ready'"
+    )
+    return {(p, v) for p, v in rows}
 
 
 def replace_content(

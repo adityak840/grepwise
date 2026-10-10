@@ -14,7 +14,7 @@ from pydantic import BaseModel, ValidationError
 from rich.console import Console
 from rich.table import Table
 
-from grepwise import evals
+from grepwise import commands, evals
 from grepwise.config import REPO_ROOT, get_settings
 from grepwise.db.connection import Conn, connect
 from grepwise.ingest.embed import Embedder, make_embedder
@@ -35,6 +35,12 @@ app = typer.Typer(
 eval_app = typer.Typer(no_args_is_help=True, help="Measure search quality.")
 app.add_typer(eval_app, name="eval")
 console = Console()
+
+# Managing what's indexed (spec 12).
+app.command()(commands.add)
+app.command()(commands.deps)
+app.command()(commands.sync)
+app.command()(commands.remove)
 
 
 class SourceType(StrEnum):
@@ -104,15 +110,7 @@ def _run_index(run: Callable[[Conn, Embedder], IndexSummary]) -> None:
     _print_summary(summary)
 
 
-def _print_summary(s: IndexSummary) -> None:
-    sha = f" ({s.commit_sha[:12]})" if s.commit_sha else ""
-    console.print(f"[green]Indexed[/green] {s.name}@{s.version}{sha}")
-    skipped = ", ".join(f"{n} {reason}" for reason, n in sorted(s.skipped.items())) or "none"
-    kinds = ", ".join(f"{n} {kind}" for kind, n in sorted(s.chunks_by_kind.items())) or "none"
-    console.print(f"  documents:  {s.files_kept} kept; skipped: {skipped}")
-    console.print(f"  chunks:     {s.chunks_by_kind.total()} ({kinds})")
-    console.print(f"  embeddings: {s.embeddings_created} created, {s.embeddings_reused} reused")
-    console.print(f"  time:       {s.seconds:.1f}s")
+_print_summary = commands.print_summary
 
 
 @app.command("search")

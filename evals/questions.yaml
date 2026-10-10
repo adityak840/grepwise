@@ -1,11 +1,9 @@
 # Grepwise eval questions (phase 6.2). See docs/spec/06-ui-evals-launch.md, section 6.
 #
-# Sources these questions assume are indexed (all pinned):
-#   pallets/itsdangerous@2.2.0   repo  (grepwise index https://github.com/pallets/itsdangerous --ref 2.2.0)
-#   fastapi/typer@0.27.2         docs  (grepwise index-docs https://github.com/fastapi/typer --ref 0.27.2 --path docs)
-#   fastapi/typer@0.27.2         repo  (grepwise index https://github.com/fastapi/typer --ref 0.27.2)
-#   pallets/click@8.5.0          repo  (grepwise index https://github.com/pallets/click --ref 8.5.0)
-#   pallets/click@8.5.0          docs  (grepwise index-docs https://github.com/pallets/click --ref 8.5.0 --path docs)
+# Sources these questions assume are indexed (all pinned; `make demo-sources` does it):
+#   pallets/itsdangerous@2.2.0   repo     (code and docs, split by symbol and by heading)
+#   fastapi/typer@0.27.2         repo
+#   pallets/click@8.5.0          repo
 #   petstore@1.0.27              openapi
 #
 # How to write a question:

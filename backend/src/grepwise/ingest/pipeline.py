@@ -12,17 +12,18 @@ from collections import Counter
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from grepwise.db.connection import Conn
 from grepwise.ingest import fetch, store
 from grepwise.ingest.chunkers import split_lines
 from grepwise.ingest.chunkers.code import chunk_file
-from grepwise.ingest.chunkers.markdown import DOCS_EXTENSIONS, chunk_markdown
+from grepwise.ingest.chunkers.docs import DOCS_EXTENSIONS, chunk_docs, docs_format, sphinx_dirs
 from grepwise.ingest.chunkers.openapi import chunk_endpoint, render_operations
 from grepwise.ingest.embed import Embedder, Vector
 from grepwise.ingest.enrich import EnrichedChunk, docs_header, endpoint_header, enrich
-from grepwise.ingest.filters import collect_files
+from grepwise.ingest.filters import SourceFile, collect_files
 from grepwise.ingest.openapi import load_spec
 
 Fetcher = Callable[[str, str], AbstractContextManager[fetch.Checkout]]
@@ -34,7 +35,8 @@ log = logging.getLogger(__name__)
 EMBED_SAVE_EVERY = 64
 
 # Names and versions end up in citations (`name@version:path:Lx-Ly`), so no '@' or ':'.
-_SAFE_LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+# '+' is allowed for local versions (PEP 440: '1.0+local').
+_SAFE_LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+-]*$")
 
 
 class InvalidNameError(ValueError):
@@ -76,12 +78,16 @@ def _index(
     version: str,
     subpath: str | None,
     build: Callable[[IndexSummary], list[store.DocumentRecord]],
+    ref: str | None = None,
+    package: str | None = None,
 ) -> IndexSummary:
     """Run `build`, then embed and store. On any error the source is marked `failed` and the
     error re-raised; previously indexed chunks stay untouched until a run succeeds."""
     started = time.monotonic()
     summary = IndexSummary(name=name, version=version)
-    source_id = store.begin_source(conn, type_, name, url, version, subpath)
+    source_id = store.begin_source(
+        conn, type_, name, url, version, subpath, ref=ref, package=package
+    )
     try:
         documents = build(summary)
         all_chunks = [e for d in documents for e in d.chunks]
@@ -126,34 +132,84 @@ def _embed_and_save(
         log.info("Embedded %d/%d new chunks", min(i + EMBED_SAVE_EVERY, len(items)), len(items))
 
 
+def build_documents(
+    name: str, files: list[SourceFile], *, docs_only: bool = False
+) -> list[store.DocumentRecord]:
+    """Split each file the way that suits it: docs by heading (Markdown, reST, and Sphinx `.txt`
+    files), code by symbol. `docs_only` drops everything that isn't docs."""
+    sphinx = sphinx_dirs(f.path for f in files)
+    documents = []
+    for f in files:
+        fmt = docs_format(f.path, sphinx)
+        if fmt is not None:
+            chunks = chunk_docs(f.path, f.text, fmt)
+            enriched = [enrich(f.path, c, docs_header(name, f.path, c)) for c in chunks]
+            documents.append(_document(f.path, f.text, fmt, enriched))
+        elif not docs_only:
+            language, code_chunks = chunk_file(f.path, f.text)
+            enriched = [enrich(f.path, c) for c in code_chunks]
+            documents.append(_document(f.path, f.text, language, enriched))
+    return documents
+
+
 def index_repo(
     conn: Conn,
     embedder: Embedder,
     url: str,
     ref: str,
     *,
+    name: str | None = None,
+    version: str | None = None,
+    package: str | None = None,
     fetcher: Fetcher = fetch.checkout,
 ) -> IndexSummary:
-    """Index a GitHub repo's code at `ref`."""
+    """Index a GitHub repo at `ref`: code split by symbol, docs by heading. By default the
+    source is named `owner/repo` at version `ref`; a package source passes its own name and
+    version (e.g. 'typer', '0.27.2' for the tag '0.27.2' or 'v0.27.2')."""
     repo = fetch.parse_github_url(url)
     fetch.validate_ref(ref)
+    source_name = validate_label(name, "name") if name else repo.name
+    source_version = validate_label(version, "version") if version else ref
 
     def build(summary: IndexSummary) -> list[store.DocumentRecord]:
         with fetcher(repo.url, ref) as co:  # the temp folder is gone after this block
             summary.commit_sha = co.commit_sha
             files = collect_files(co.path)
         summary.files_kept, summary.skipped = len(files.kept), files.skipped
-        documents = []
-        for f in files.kept:
-            language, chunks = chunk_file(f.path, f.text)
-            documents.append(
-                _document(f.path, f.text, language, [enrich(f.path, c) for c in chunks])
-            )
-        return documents
+        return build_documents(source_name, files.kept)
 
     return _index(
-        conn, embedder, type_="repo", name=repo.name, url=repo.url, version=ref, subpath=None,
-        build=build,
+        conn, embedder, type_="repo", name=source_name, url=repo.url, version=source_version,
+        subpath=None, build=build, ref=ref, package=package,
+    )  # fmt: skip
+
+
+def index_local(
+    conn: Conn,
+    embedder: Embedder,
+    folder: Path,
+    *,
+    name: str | None = None,
+    version: str | None = None,
+) -> IndexSummary:
+    """Index a folder on this machine, in place: named after the folder, versioned by its git
+    commit (short), or 'local' when it isn't a git repo."""
+    root = folder.expanduser().resolve()
+    if not root.is_dir():
+        raise fetch.FetchError(f"Not a folder: {folder}")
+    commit = fetch.local_commit(root)
+    source_name = validate_label(name or root.name, "name")
+    source_version = validate_label(version or (commit[:12] if commit else "local"), "version")
+
+    def build(summary: IndexSummary) -> list[store.DocumentRecord]:
+        summary.commit_sha = commit or ""
+        files = collect_files(root)
+        summary.files_kept, summary.skipped = len(files.kept), files.skipped
+        return build_documents(source_name, files.kept)
+
+    return _index(
+        conn, embedder, type_="repo", name=source_name, url=root.as_uri(),
+        version=source_version, subpath=None, build=build, ref=commit or None,
     )  # fmt: skip
 
 
@@ -167,7 +223,7 @@ def index_docs(
     name: str | None = None,
     fetcher: Fetcher = fetch.checkout,
 ) -> IndexSummary:
-    """Index the Markdown/MDX files under `path` in a GitHub repo at `ref`."""
+    """Index the docs (Markdown, MDX, reST) under `path` in a GitHub repo at `ref`."""
     repo = fetch.parse_github_url(url)
     fetch.validate_ref(ref)
     source_name = validate_label(name, "name") if name else repo.name
@@ -176,18 +232,17 @@ def index_docs(
     def build(summary: IndexSummary) -> list[store.DocumentRecord]:
         with fetcher(repo.url, ref) as co:
             summary.commit_sha = co.commit_sha
-            files = collect_files(co.path, subpath, DOCS_EXTENSIONS)
-        summary.files_kept, summary.skipped = len(files.kept), files.skipped
-        documents = []
-        for f in files.kept:
-            chunks = chunk_markdown(f.path, f.text)
-            enriched = [enrich(f.path, c, docs_header(source_name, f.path, c)) for c in chunks]
-            documents.append(_document(f.path, f.text, "markdown", enriched))
+            # conf.py and .txt too: a Sphinx project's .txt files are reST (see docs_format).
+            files = collect_files(co.path, subpath, (*DOCS_EXTENSIONS, ".txt", "conf.py"))
+        documents = build_documents(source_name, files.kept, docs_only=True)
+        summary.files_kept = len(documents)
+        summary.skipped = files.skipped
+        summary.skipped["other_type"] += len(files.kept) - len(documents)
         return documents
 
     return _index(
         conn, embedder, type_="docs", name=source_name, url=repo.url, version=ref,
-        subpath=subpath, build=build,
+        subpath=subpath, build=build, ref=ref,
     )  # fmt: skip
 
 

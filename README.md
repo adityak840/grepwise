@@ -2,7 +2,7 @@
 
 Give your coding assistant the real docs and source of the libraries you use, at the exact version, with line-level citations it can check. Grepwise is an MCP server that runs on your machine: no Docker, no API keys.
 
-**Status:** v2 in progress ([plan](docs/spec/10-v2-plan.md)). N1 done: SQLite storage, no LLM or server needed. The earlier web UI and built-in agent are archived at the `v0.1-webapp` tag.
+**Status:** v2 in progress ([plan](docs/spec/10-v2-plan.md)). N1 done: SQLite storage, no LLM or server needed. N2 done: index your project's dependencies by name. The earlier web UI and built-in agent are archived at the `v0.1-webapp` tag.
 
 ## Setup
 
@@ -14,18 +14,24 @@ make setup    # installs dependencies, tree-sitter grammars and the local embedd
 
 Everything Grepwise stores lives in `~/.grepwise/`: the database (`grepwise.db`) and the embedding model. Delete the folder to start over.
 
-## Index something
+## Index the libraries you use
+
+From inside your Python project:
 
 ```bash
-cd backend
-uv run grepwise index https://github.com/pallets/itsdangerous --ref 2.2.0             # code
-uv run grepwise index-docs https://github.com/fastapi/typer --ref 0.27.2 --path docs  # docs folder
-uv run grepwise index-openapi https://petstore3.swagger.io/api/v3/openapi.json \
-    --name petstore --version 1.0.27                                                  # API spec
-uv run grepwise sources
+grepwise deps          # your dependencies, their exact versions (from uv.lock, poetry.lock, ...) and what's indexed
+grepwise sync          # index every direct dependency at its locked version
+grepwise add typer     # one library, at the version your project locks (or the latest)
+grepwise add typer==0.27.2
+grepwise add https://github.com/pallets/click --ref 8.5.0   # any GitHub repo at a tag
+grepwise add ~/code/internal-lib                             # a folder on your machine
+grepwise sources       # what's indexed
+grepwise remove typer@0.27.2
 ```
 
-Re-running an index command for the same version re-indexes it in place, reusing every embedding already made.
+Grepwise finds each package's GitHub repo from PyPI and the git tag for that exact version; if there's no matching tag it says so instead of guessing. Code is split by function and class, docs (Markdown, MDX, reStructuredText) by heading. Re-adding a version re-indexes it in place, reusing every embedding already made.
+
+Until Grepwise installs as a tool (N4), run these from your project folder as `uv run --project /path/to/grepwise/backend grepwise ...`. Use `--project`, not `--directory`: `--directory` switches into `backend/`, so Grepwise would read its own dependencies instead of yours.
 
 ## Use it in Claude Code / Cursor
 
