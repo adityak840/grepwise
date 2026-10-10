@@ -16,6 +16,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked
+      # constraints.txt (what `make install` pins) must match uv.lock.
+      - run: uv export --frozen --no-dev --no-hashes --no-emit-project --no-header | diff - constraints.txt
       - run: uv run python -c 'import tree_sitter_language_pack as t; t.download(["python", "javascript", "typescript", "tsx"])'
       - run: uv run ruff check .
       - run: uv run ruff format --check .

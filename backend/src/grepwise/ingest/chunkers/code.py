@@ -55,8 +55,20 @@ def detect_language(path: str) -> str | None:
     return LANGUAGE_BY_EXTENSION.get(PurePosixPath(path).suffix.lower())
 
 
+GRAMMARS = ["python", "javascript", "typescript", "tsx"]
+
+
+def ensure_grammar(language: str) -> None:
+    """Download a grammar the first time it's needed (a fresh install hasn't run setup),
+    instead of letting chunking fall back to plain windows without a word."""
+    if language not in tslp.downloaded_languages():
+        log.info("Downloading the tree-sitter grammar for %s", language)
+        tslp.download([language])
+
+
 @lru_cache
 def _parser(language: str) -> Parser:
+    ensure_grammar(language)
     return Parser(tslp.get_language(language))
 
 

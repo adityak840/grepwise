@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from grepwise.ingest.store import touch_sources
 from grepwise.search.hybrid import search as hybrid_search
 from grepwise.tools.caps import OVERHEAD_CHARS, size
 from grepwise.tools.context import ToolContext
@@ -73,6 +74,7 @@ def search(ctx: ToolContext, inp: SearchInput) -> SearchOutput:
     hits: list[SearchHit] = []
     truncated = False
     if sources:
+        touch_sources(ctx.conn, [s.id for s in sources])
         found_results = hybrid_search(
             ctx.conn, ctx.embedder, inp.query, kinds=KINDS[inp.kind] if inp.kind else None,
             limit=inp.limit, token_budget=None, candidates=ctx.settings.search_candidates,

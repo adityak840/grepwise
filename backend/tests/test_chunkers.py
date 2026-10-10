@@ -162,3 +162,22 @@ def test_every_chunk_fits_when_every_line_fits(name: str) -> None:
     assert len(line) - 1 <= MAX_LINE_CHARS
     chunks = chunk_file(name, line * 40)[1]
     assert chunks and all(len(c.content) <= MAX_CHUNK_CHARS for c in chunks)
+
+
+def test_a_missing_grammar_is_downloaded_on_first_use(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tree_sitter_language_pack as tslp
+
+    from grepwise.ingest.chunkers import code
+
+    downloaded: list[list[str]] = []
+
+    def fake_download(names: list[str]) -> int:
+        downloaded.append(names)
+        return len(names)
+
+    monkeypatch.setattr(tslp, "downloaded_languages", lambda: ["python"])
+    monkeypatch.setattr(tslp, "download", fake_download)
+    code.ensure_grammar("python")
+    assert downloaded == []  # already there
+    code.ensure_grammar("tsx")
+    assert downloaded == [["tsx"]]

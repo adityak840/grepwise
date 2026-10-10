@@ -231,3 +231,57 @@ def remove(
             raise typer.Exit(1)
         store.remove_source(conn, source_id)
     console.print(f"Removed {ref} ({kind}, {chunks} chunks).", highlight=False)
+
+
+def gc(
+    days: Annotated[int, typer.Option("--days", min=1, help="Unused for this many days")] = 30,
+    all_: Annotated[
+        bool, typer.Option("--all", help="Also sources added by URL or folder, not just packages")
+    ] = False,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Only show what would go")] = False,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Don't ask for confirmation")] = False,
+) -> None:
+    """Remove libraries nobody has searched for a while, and give the disk space back."""
+    with closing(connect()) as conn:
+        stale = conn.execute(
+            """
+            SELECT id, name, version, type, coalesce(last_used_at, updated_at) AS used
+            FROM sources
+            WHERE used < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)
+              AND (package IS NOT NULL OR ?)
+            ORDER BY used
+            """,
+            (f"-{days} days", all_),
+        ).fetchall()
+        (orphans,) = conn.execute(
+            "SELECT count(*) FROM embeddings "
+            "WHERE content_hash NOT IN (SELECT content_hash FROM chunks)"
+        ).fetchone()
+        what = "sources" if all_ else "package sources"
+        if stale:
+            table = Table("source", "type", "last used", title=f"{what} unused for {days}+ days")
+            for _, name, version, kind, used in stale:
+                table.add_row(f"{name}@{version}", kind, used)
+            console.print(table)
+        else:
+            console.print(f"No {what} unused for {days}+ days.")
+        console.print(f"{orphans} embeddings are already unused by any chunk.", style="dim")
+        if dry_run or not (stale or orphans):
+            return
+        prompt = f"Remove {len(stale)} sources and the embeddings nothing uses?"
+        if not yes and not typer.confirm(prompt):
+            raise typer.Exit(1)
+        before = store.database_size(conn)
+        for source_id, *_ in stale:
+            store.remove_source(conn, source_id)
+        cur = conn.execute(
+            "DELETE FROM embeddings WHERE content_hash NOT IN (SELECT content_hash FROM chunks)"
+        )
+        conn.execute("VACUUM")  # rewrite the file without the freed pages
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        after = store.database_size(conn)
+    console.print(
+        f"Removed {len(stale)} sources and {cur.rowcount} embeddings. "
+        f"Database: {before} → {after}.",
+        highlight=False,
+    )

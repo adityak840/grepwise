@@ -17,7 +17,7 @@ from grepwise.config import get_settings
 Conn = sqlite3.Connection
 
 # Schema steps, applied in order; `PRAGMA user_version` records how many have run.
-SCHEMA_STEPS = ["schema.sql", "schema_2.sql", "schema_3.sql"]
+SCHEMA_STEPS = ["schema.sql", "schema_2.sql", "schema_3.sql", "schema_4.sql"]
 
 
 class DatabaseError(Exception):

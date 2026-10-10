@@ -5,6 +5,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from grepwise.ingest.store import touch_sources
 from grepwise.search.citations import CitationError, format_citation, parse_citation
 from grepwise.search.links import link_for
 from grepwise.tools.context import ToolContext
@@ -110,9 +111,12 @@ def read(ctx: ToolContext, inp: ReadInput) -> ReadOutput:
         notes.append("The cited range was longer than one read; continue from next_start_line.")
     name, _, version = source_ref.rpartition("@")
     row = ctx.conn.execute(
-        "SELECT url, ref, type FROM sources WHERE name = ? AND version = ? ORDER BY type LIMIT 1",
+        "SELECT url, ref, type, id FROM sources WHERE name = ? AND version = ? "
+        "ORDER BY type LIMIT 1",
         (name, version),
     ).fetchone()
+    if row:
+        touch_sources(ctx.conn, [row[3]])
     lines = out.content.splitlines(keepends=True)
     numbered = "".join(f"{out.start_line + i:>5}  {line}" for i, line in enumerate(lines))
     return ReadOutput(

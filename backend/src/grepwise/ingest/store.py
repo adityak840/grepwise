@@ -119,6 +119,14 @@ def remove_source(conn: Conn, source_id: int) -> None:
         conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
 
 
+def touch_sources(conn: Conn, source_ids: Iterable[int]) -> None:
+    """Record that these sources were just used (for `grepwise gc`)."""
+    conn.execute(
+        f"UPDATE sources SET last_used_at = {_NOW} WHERE id IN (SELECT value FROM json_each(?))",
+        (json_list(list(source_ids)),),
+    )
+
+
 def indexed_packages(conn: Conn) -> set[tuple[str, str]]:
     """(package, version) of every package source that is ready."""
     rows = conn.execute(

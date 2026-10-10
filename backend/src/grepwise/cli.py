@@ -14,7 +14,7 @@ from pydantic import BaseModel, ValidationError
 from rich.console import Console
 from rich.table import Table
 
-from grepwise import commands, evals
+from grepwise import commands, evals, onboarding
 from grepwise.config import REPO_ROOT, get_settings
 from grepwise.db.connection import Conn, connect
 from grepwise.ingest.embed import Embedder, make_embedder
@@ -41,6 +41,10 @@ app.command()(commands.add)
 app.command()(commands.deps)
 app.command()(commands.sync)
 app.command()(commands.remove)
+app.command()(commands.gc)
+# Install and onboarding (spec 14).
+app.command()(onboarding.setup)
+app.command()(onboarding.doctor)
 
 
 class SourceType(StrEnum):
