@@ -2,7 +2,7 @@
 
 Give your coding assistant the real docs and source of the libraries you use, at the exact version, with line-level citations it can check. Grepwise is an MCP server that runs on your machine: no Docker, no API keys.
 
-**Status:** v2 in progress ([plan](docs/spec/10-v2-plan.md)). N1 done: SQLite storage, no LLM or server needed. N2 done: index your project's dependencies by name. The earlier web UI and built-in agent are archived at the `v0.1-webapp` tag.
+**Status:** v2 in progress ([plan](docs/spec/10-v2-plan.md)). N1 done: SQLite storage, no LLM or server needed. N2 done: index your project's dependencies by name. N3 done: three MCP tools, libraries indexed on first use. The earlier web UI and built-in agent are archived at the `v0.1-webapp` tag.
 
 ## Setup
 
@@ -35,12 +35,18 @@ Until Grepwise installs as a tool (N4), run these from your project folder as `u
 
 ## Use it in Claude Code / Cursor
 
-Grepwise's tools (`list_sources`, `search`, `read_file`, `find_symbol`, `get_endpoint`, `verify_citation`) are called by your editor's own model. Grepwise makes no LLM calls.
+Grepwise gives your editor's model three tools; it makes no LLM calls itself.
 
-**Claude Code**
+- **`search`**: the real code and docs of your project's libraries, by plain name (`typer` means the version your lockfile pins). A dependency that isn't indexed yet is indexed on the spot: keyword results within seconds, semantic search filling in behind.
+- **`read`**: exact, numbered lines by citation or path. It also checks a citation is real.
+- **`libraries`**: your dependencies, their locked versions, and what's indexed.
+
+Every result has a citation (`typer@0.27.2:docs/tutorial/options/required.md:L1-L74`) and a link to those exact lines on GitHub (or in a local file) that you can click.
+
+**Claude Code** (use `--project`, not `--directory`, so Grepwise sees the project you're working in):
 
 ```bash
-claude mcp add grepwise -- uv run --directory /path/to/grepwise/backend grepwise mcp
+claude mcp add --scope user grepwise -- uv run --project /path/to/grepwise/backend grepwise mcp
 ```
 
 **Cursor** (`~/.cursor/mcp.json`) or **Claude Desktop** (`claude_desktop_config.json`):
@@ -50,13 +56,13 @@ claude mcp add grepwise -- uv run --directory /path/to/grepwise/backend grepwise
   "mcpServers": {
     "grepwise": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/grepwise/backend", "grepwise", "mcp"]
+      "args": ["run", "--project", "/path/to/grepwise/backend", "grepwise", "mcp"]
     }
   }
 }
 ```
 
-Then ask, for example: *"Using grepwise, how do I make an option required in Typer? Cite your sources."* A good answer cites exact lines, like `fastapi/typer@0.27.2:docs/tutorial/options/required.md:L1-L74`, which you can check with `grepwise verify "<citation>"`.
+Then just ask, e.g. *"How do I make an option required in Typer?"* The server tells the model to look libraries up instead of answering from memory. There's also an `ask` prompt (in Claude Code: `/mcp__grepwise__ask`).
 
 ## The same tools from the terminal
 

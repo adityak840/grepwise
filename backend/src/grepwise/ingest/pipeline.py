@@ -59,6 +59,7 @@ class IndexSummary:
     chunks_by_kind: Counter[str] = field(default_factory=Counter)
     embeddings_created: int = 0
     embeddings_reused: int = 0
+    embeddings_pending: int = 0  # left for the background worker (embed=False)
     seconds: float = 0.0
 
 
@@ -80,9 +81,13 @@ def _index(
     build: Callable[[IndexSummary], list[store.DocumentRecord]],
     ref: str | None = None,
     package: str | None = None,
+    embed: bool = True,
 ) -> IndexSummary:
     """Run `build`, then embed and store. On any error the source is marked `failed` and the
-    error re-raised; previously indexed chunks stay untouched until a run succeeds."""
+    error re-raised; previously indexed chunks stay untouched until a run succeeds.
+
+    `embed=False` stores the chunks straight away (searchable by keyword at once) and leaves
+    new embeddings to `embed_missing`, e.g. in the MCP server's background worker."""
     started = time.monotonic()
     summary = IndexSummary(name=name, version=version)
     source_id = store.begin_source(
@@ -100,8 +105,11 @@ def _index(
             e.content_hash: e.embedding_text for e in all_chunks if e.content_hash not in embeddings
         }
         summary.embeddings_reused = sum(1 for e in all_chunks if e.content_hash in embeddings)
-        summary.embeddings_created = len(todo)
-        _embed_and_save(conn, embedder, todo, embeddings)
+        if embed:
+            summary.embeddings_created = len(todo)
+            _embed_and_save(conn, embedder, todo, embeddings)
+        else:
+            summary.embeddings_pending = len(todo)
 
         store.replace_content(
             conn, source_id, summary.commit_sha or None, documents, embedder.model_id
@@ -161,6 +169,7 @@ def index_repo(
     name: str | None = None,
     version: str | None = None,
     package: str | None = None,
+    embed: bool = True,
     fetcher: Fetcher = fetch.checkout,
 ) -> IndexSummary:
     """Index a GitHub repo at `ref`: code split by symbol, docs by heading. By default the
@@ -180,7 +189,7 @@ def index_repo(
 
     return _index(
         conn, embedder, type_="repo", name=source_name, url=repo.url, version=source_version,
-        subpath=None, build=build, ref=ref, package=package,
+        subpath=None, build=build, ref=ref, package=package, embed=embed,
     )  # fmt: skip
 
 
@@ -273,3 +282,64 @@ def index_openapi(
         conn, embedder, type_="openapi", name=name, url=location, version=version, subpath=None,
         build=build,
     )  # fmt: skip
+
+
+# --- Embedding later (spec 13, section 4) -------------------------------------------------
+
+_TEST_DIRS = {"tests", "test", "testing"}
+_EXAMPLE_DIRS = {"examples", "example", "docs_src", "samples", "demo", "demos"}
+
+
+def embed_priority(path: str, kind: str) -> int:
+    """Docs first, then the package's own code, then examples, then tests."""
+    if kind == "section":
+        return 0
+    parts = path.lower().split("/")
+    if _TEST_DIRS & set(parts[:-1]) or parts[-1].startswith("test_"):
+        return 3
+    if _EXAMPLE_DIRS & set(parts[:-1]):
+        return 2
+    return 1
+
+
+def embed_missing(
+    conn: Conn,
+    embedder: Embedder,
+    source_id: int,
+    *,
+    batch: int = EMBED_SAVE_EVERY,
+    keep_going: Callable[[], bool] = lambda: True,
+) -> int:
+    """Embed this source's chunks that have no vector yet, most useful first, saving each
+    batch and giving the source a new `generation` so vector search picks the vectors up.
+    Stops early when `keep_going()` returns False. Returns how many it embedded."""
+    rows = conn.execute(
+        """
+        SELECT c.content_hash, c.header, c.content, d.path, c.kind
+        FROM chunks c
+        JOIN documents d ON d.id = c.document_id
+        LEFT JOIN embeddings e ON e.content_hash = c.content_hash AND e.model_id = ?
+        WHERE c.source_id = ? AND e.content_hash IS NULL
+        """,
+        (embedder.model_id, source_id),
+    ).fetchall()
+    todo: dict[str, tuple[int, str]] = {}
+    for h, header, content, path, kind in rows:
+        priority = embed_priority(path, kind)
+        if h not in todo or priority < todo[h][0]:
+            todo[h] = (priority, f"{header}\n\n{content}")
+    ordered = sorted(todo.items(), key=lambda item: (item[1][0], item[0]))
+    done = 0
+    for i in range(0, len(ordered), batch):
+        if not keep_going():
+            break
+        group = ordered[i : i + batch]
+        hashes = [h for h, _ in group]
+        vectors = embedder.embed([text for _, (_, text) in group])
+        store.save_embeddings(conn, embedder.model_id, dict(zip(hashes, vectors, strict=True)))
+        conn.execute(
+            "UPDATE sources SET generation = ?, embedding_model = ? WHERE id = ?",
+            (time.time_ns(), embedder.model_id, source_id),
+        )
+        done += len(group)
+    return done

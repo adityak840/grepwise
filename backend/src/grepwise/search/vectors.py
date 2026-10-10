@@ -23,6 +23,11 @@ class SourceMatrix:
     ids: npt.NDArray[np.int64]  # chunk id of each row
     kinds: npt.NDArray[np.object_]  # chunk kind of each row
     vectors: npt.NDArray[np.float32]  # one normalized vector per row
+    total_chunks: int  # including chunks without a vector yet
+
+    @property
+    def coverage(self) -> float:
+        return len(self.ids) / self.total_chunks if self.total_chunks else 1.0
 
 
 class VectorCache:
@@ -66,15 +71,23 @@ def _load(conn: Conn, source_id: int, generation: int, model_id: str, dim: int) 
         (model_id, source_id),
     ).fetchall()
     vectors = np.frombuffer(b"".join(r[2] for r in rows), dtype="<f2")
+    (total,) = conn.execute(
+        "SELECT count(*) FROM chunks WHERE source_id = ?", (source_id,)
+    ).fetchone()
     return SourceMatrix(
         generation=generation,
         ids=np.array([r[0] for r in rows], dtype=np.int64),
         kinds=np.array([r[1] for r in rows], dtype=object),
         vectors=vectors.astype(np.float32).reshape(len(rows), dim),
+        total_chunks=int(total),
     )
 
 
 CACHE = VectorCache()
+
+# A source that is still being embedded is left out of vector search until most of it has
+# vectors: ranking only the few chunks that happen to be embedded would put noise first.
+MIN_COVERAGE = 0.9
 
 
 def vector_search(
@@ -93,7 +106,7 @@ def vector_search(
     all_scores: list[npt.NDArray[np.float32]] = []
     for source_id, generation in sources:
         m = cache.get(conn, source_id, generation, model_id, len(q))
-        if len(m.ids) == 0:
+        if len(m.ids) == 0 or m.coverage < MIN_COVERAGE:
             continue
         scores = m.vectors @ q  # vectors are unit length: dot product = cosine similarity
         keep = np.isin(m.kinds, list(kinds)) if kinds else np.ones(len(m.ids), dtype=bool)

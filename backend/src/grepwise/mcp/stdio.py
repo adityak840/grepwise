@@ -19,6 +19,7 @@ from grepwise.db.connection import Conn, connect
 from grepwise.ingest.embed import Embedder, LocalEmbedder, make_embedder
 from grepwise.mcp.server import build_server
 from grepwise.tools import ToolContext
+from grepwise.worker import EmbeddingWorker
 
 log = logging.getLogger(__name__)
 
@@ -27,9 +28,10 @@ class SharedConnection:
     """One database connection for the session, opened on the first tool call. A lock
     serialises tool calls, since one SQLite connection runs one statement at a time."""
 
-    def __init__(self, settings: Settings, embedder: Embedder):
+    def __init__(self, settings: Settings, embedder: Embedder, worker: EmbeddingWorker | None):
         self.settings = settings
         self.embedder = embedder
+        self.worker = worker
         self._conn: Conn | None = None
         self._lock = threading.Lock()
 
@@ -38,7 +40,7 @@ class SharedConnection:
         with self._lock:
             if self._conn is None:
                 self._conn = connect(self.settings.db_path)
-            yield ToolContext(self._conn, self.settings, self.embedder)
+            yield ToolContext(self._conn, self.settings, self.embedder, worker=self.worker)
 
     def close(self) -> None:
         if self._conn is not None:
@@ -50,18 +52,30 @@ def warm_up(embedder: Embedder) -> None:
         embedder.embed_query("warm up")  # so the first search isn't slow
 
 
+def start_worker(worker: EmbeddingWorker) -> None:
+    """Resume embedding cut short by a restart, then keep embedding what search queues."""
+    worker.start()
+    try:
+        worker.enqueue_unfinished()
+    except Exception:
+        log.exception("Couldn't check for sources with missing embeddings")
+
+
 def serve_stdio(settings: Settings) -> None:
     embedder = make_embedder(settings)
-    shared = SharedConnection(settings, embedder)
+    worker = EmbeddingWorker(settings.db_path, embedder)
+    shared = SharedConnection(settings, embedder, worker)
     server = build_server(shared)
 
     async def main() -> None:
         async with stdio_server() as (read, write), anyio.create_task_group() as tg:
             tg.start_soon(anyio.to_thread.run_sync, warm_up, embedder)
+            tg.start_soon(anyio.to_thread.run_sync, start_worker, worker)
             await server.run(read, write, server.create_initialization_options())
             tg.cancel_scope.cancel()  # the client closed the connection: don't wait for warm-up
 
     try:
         anyio.run(main)
     finally:
+        worker.stop()
         shared.close()

@@ -4,17 +4,17 @@
     "all": {
       "n": 51,
       "hit_at_5": 0.8823529411764706,
-      "mrr": 0.7364612511671336
+      "mrr": 0.77453314659197
     },
     "code": {
       "n": 20,
       "hit_at_5": 0.8,
-      "mrr": 0.6025595238095238
+      "mrr": 0.6913095238095238
     },
     "docs": {
       "n": 16,
       "hit_at_5": 0.9375,
-      "mrr": 0.7578125
+      "mrr": 0.7265625
     },
     "api": {
       "n": 5,
@@ -24,17 +24,17 @@
     "cross": {
       "n": 10,
       "hit_at_5": 0.9,
-      "mrr": 0.8383333333333333
+      "mrr": 0.905
     }
   },
   "questions": [
     {
       "id": "code-01",
       "category": "code",
-      "rank": 2,
+      "rank": 1,
       "top_paths": [
-        "docs/timed.rst",
         "src/itsdangerous/timed.py",
+        "docs/timed.rst",
         "src/itsdangerous/timed.py",
         "tests/test_itsdangerous/test_timed.py",
         "src/itsdangerous/exc.py"
@@ -61,7 +61,7 @@
         "src/itsdangerous/signer.py",
         "docs/concepts.rst",
         "src/itsdangerous/signer.py",
-        "src/itsdangerous/signer.py"
+        "docs/index.rst"
       ]
     },
     {
@@ -70,8 +70,8 @@
       "rank": 1,
       "top_paths": [
         "src/itsdangerous/url_safe.py",
-        "docs/url_safe.rst",
         "src/itsdangerous/url_safe.py",
+        "docs/url_safe.rst",
         "docs/serializer.rst",
         "README.md"
       ]
@@ -127,13 +127,13 @@
     {
       "id": "code-09",
       "category": "code",
-      "rank": 2,
+      "rank": 1,
       "top_paths": [
+        "src/itsdangerous/exc.py",
         "src/itsdangerous/timed.py",
         "src/itsdangerous/exc.py",
         "src/itsdangerous/exc.py",
-        "docs/timed.rst",
-        "src/itsdangerous/timed.py"
+        "docs/timed.rst"
       ]
     },
     {
@@ -203,9 +203,9 @@
       "top_paths": [
         "src/click/types.py",
         "src/click/types.py",
+        "docs/parameter-types.md",
         "src/click/types.py",
-        "src/click/types.py",
-        "tests/test_shell_completion.py"
+        "src/click/types.py"
       ]
     },
     {
@@ -223,13 +223,13 @@
     {
       "id": "code-17",
       "category": "code",
-      "rank": 5,
+      "rank": 1,
       "top_paths": [
+        "src/click/testing.py",
         "tests/test_testing.py",
         "tests/test_testing.py",
         "tests/test_stream_lifecycle.py",
-        "tests/test_testing.py",
-        "src/click/testing.py"
+        "tests/test_testing.py"
       ]
     },
     {
@@ -247,7 +247,7 @@
     {
       "id": "code-19",
       "category": "code",
-      "rank": 8,
+      "rank": 10,
       "top_paths": [
         "docs/tutorial/commands/help.md",
         "typer/rich_utils.py",
@@ -295,10 +295,10 @@
     {
       "id": "docs-03",
       "category": "docs",
-      "rank": 1,
+      "rank": 2,
       "top_paths": [
-        "docs/tutorial/options/version.md",
         "tests/test_deprecation.py",
+        "docs/tutorial/options/version.md",
         "docs/tutorial/options/version.md",
         "docs/tutorial/options/version.md",
         "docs/tutorial/install.md"
@@ -420,8 +420,8 @@
         "docs/options.md",
         "docs/prompts.md",
         "src/click/core.py",
-        "docs/options.md",
-        "src/click/core.py"
+        "src/click/core.py",
+        "docs/options.md"
       ]
     },
     {
@@ -441,10 +441,10 @@
       "category": "docs",
       "rank": 8,
       "top_paths": [
+        "src/click/types.py",
         "src/click/utils.py",
         "docs/index.md",
         "README.md",
-        "src/click/types.py",
         "docs/why.md"
       ]
     },
@@ -574,9 +574,9 @@
       "rank": 1,
       "top_paths": [
         "docs/tutorial/terminating.md",
+        "typer/exceptions.py",
         "typer/rich_utils.py",
         "docs/tutorial/prompt.md",
-        "typer/exceptions.py",
         "docs_src/prompt/tutorial002_py310.py"
       ]
     },
@@ -619,11 +619,11 @@
     {
       "id": "cross-09",
       "category": "cross",
-      "rank": 3,
+      "rank": 1,
       "top_paths": [
+        "src/click/testing.py",
         "docs/upgrade-guides.md",
         "tests/test_deprecations.py",
-        "src/click/testing.py",
         "docs/testing.md",
         "tests/test_testing.py"
       ]
@@ -634,8 +634,8 @@
       "rank": 1,
       "top_paths": [
         "src/click/types.py",
-        "docs/parameter-types.md",
         "src/click/types.py",
+        "docs/parameter-types.md",
         "tests/test_types.py",
         "src/click/types.py"
       ]

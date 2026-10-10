@@ -15,7 +15,16 @@ from grepwise.db.connection import Conn
 from grepwise.ingest.embed import FakeEmbedder
 from grepwise.ingest.pipeline import index_openapi, index_repo
 from grepwise.search.hybrid import search as hybrid_search
-from grepwise.tools import TOOLS, Tool, ToolContext, call_tool, is_error, serialize, tool_schemas
+from grepwise.tools import (
+    MCP_TOOLS,
+    TOOLS,
+    Tool,
+    ToolContext,
+    call_tool,
+    is_error,
+    serialize,
+    tool_schemas,
+)
 from grepwise.tools.find_symbol import _EXACT_SQL, signature
 from grepwise.tools.get_endpoint import literal_segments, matches, normalize
 from grepwise.tools.verify import VerifiedCitation, verify_citation
@@ -48,8 +57,9 @@ def error_code(result: dict[str, Any]) -> str:
 # --- Registry ----------------------------------------------------------------------------
 
 
-def test_registry_has_the_five_tools() -> None:
-    assert list(TOOLS) == ["list_sources", "search", "read_file", "find_symbol", "get_endpoint"]
+def test_registry_serves_three_tools_over_mcp() -> None:
+    assert MCP_TOOLS == ("search", "read", "libraries")
+    assert set(TOOLS) == {*MCP_TOOLS, "list_sources", "read_file", "find_symbol", "get_endpoint"}
 
 
 @pytest.mark.parametrize("schema", tool_schemas(), ids=lambda s: s["name"])
@@ -128,7 +138,10 @@ def test_search_limit_and_found_by(ctx: ToolContext, embedder: FakeEmbedder) -> 
     direct = hybrid_search(ctx.conn, embedder, "pet", limit=3, token_budget=None)
     for hit, r in zip(out["results"], direct, strict=True):
         assert hit["citation"] == r.citation
-        assert hit["found_by"] == {"vector": r.vector_rank, "keyword": r.keyword_rank}
+        assert hit["found_by"] == {
+            "vector": r.vector_rank, "keyword": r.keyword_rank, "symbol": r.symbol_rank
+        }  # fmt: skip
+        assert hit["link"] == r.link
 
 
 def test_search_token_budget_truncates(ctx: ToolContext) -> None:
@@ -138,10 +151,11 @@ def test_search_token_budget_truncates(ctx: ToolContext) -> None:
     assert sum(len(h["content"]) // 4 for h in out["results"]) <= 300 or len(out["results"]) == 1
 
 
-def test_search_unknown_source(ctx: ToolContext) -> None:
-    result = call(ctx, "search", query="x", sources=["example/mini_rep"])
-    assert error_code(result) == "source_not_found"
-    assert "example/mini_repo" in result["error"]["hint"]
+def test_search_unknown_library_is_a_note(ctx: ToolContext) -> None:
+    result = call(ctx, "search", query="x", libraries=["example/mini_rep"])
+    assert result["results"] == []
+    assert "Did you mean example/mini_repo" in result["notes"][0]
+    assert "grepwise add example/mini_rep" in result["notes"][0]
 
 
 # --- read_file ---------------------------------------------------------------------------

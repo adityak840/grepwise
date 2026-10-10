@@ -124,7 +124,7 @@ What it decided:
 | **N0** | Measure (done, section 8) | done |
 | **N1** | Slim down: archive tag, remove the agent, API and web UI; SQLite storage; retrieval eval runner. Spec: [11-n1-slim-sqlite.md](11-n1-slim-sqlite.md) | **done** (2026-10-10): hybrid Hit@5 0.90 |
 | **N2** | Project awareness: lockfile parsing, package → repo → tag resolution, `grepwise add` (name, URL, local path), `known_sources.toml`, reST docs. Spec: [12-n2-project-awareness.md](12-n2-project-awareness.md) | **done** (2026-10-10): 20/20 packages resolved |
-| **N3** | The new MCP surface: three tools, on-demand indexing, background embeddings, links, server instructions | 1.5 days |
+| **N3** | The new MCP surface: three tools, on-demand indexing, background embeddings, links, server instructions. Spec: [13-n3-mcp-surface.md](13-n3-mcp-surface.md) | **done** (2026-10-10): first search 2.1 s |
 | **N4** | Install and onboarding: `uv tool install`, `grepwise setup`, `doctor`, `gc` | 0.5 day |
 | **N5** | Prove it: Claude Code with vs. without (headless `claude -p`), a resolution eval on ~30 popular packages, README, demo video, case studies | 1.5 days |
 | **Then** | You use it for a week of real work; we fix whatever annoys you; then the recap and quiz | |

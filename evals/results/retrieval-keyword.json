@@ -4,12 +4,12 @@
     "all": {
       "n": 51,
       "hit_at_5": 0.8431372549019608,
-      "mrr": 0.6202909299920685
+      "mrr": 0.6205689823894981
     },
     "code": {
       "n": 20,
       "hit_at_5": 0.7,
-      "mrr": 0.5079323476702509
+      "mrr": 0.5086413812836963
     },
     "docs": {
       "n": 16,
@@ -223,7 +223,7 @@
     {
       "id": "code-17",
       "category": "code",
-      "rank": 16,
+      "rank": 17,
       "top_paths": [
         "tests/test_stream_lifecycle.py",
         "tests/test_testing.py",
@@ -247,7 +247,7 @@
     {
       "id": "code-19",
       "category": "code",
-      "rank": 8,
+      "rank": 7,
       "top_paths": [
         "docs/tutorial/commands/help.md",
         "typer/main.py",

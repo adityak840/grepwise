@@ -1,4 +1,5 @@
-"""The tool layer: five read-only tools, served by the MCP server and the CLI.
+"""The tool layer. Three tools are served over MCP (`MCP_TOOLS`: libraries, search, read);
+the rest stay for the CLI and `grepwise tool`.
 
 `call_tool` is the one entry point: it validates arguments, runs the tool, and caps the
 output. It never raises; every problem comes back as {"error": {code, message, hint}}.
@@ -16,6 +17,8 @@ from grepwise.tools.context import ToolContext
 from grepwise.tools.errors import ToolError, ToolErrorBody
 from grepwise.tools.find_symbol import FindSymbolInput, find_symbol
 from grepwise.tools.get_endpoint import GetEndpointInput, get_endpoint
+from grepwise.tools.libraries import LibrariesInput, libraries
+from grepwise.tools.read import ReadInput, read
 from grepwise.tools.read_file import ReadFileInput, read_file
 from grepwise.tools.search import SearchInput, search
 from grepwise.tools.sources import ListSourcesInput, list_sources
@@ -35,45 +38,43 @@ TOOLS: dict[str, Tool] = {
     t.name: t
     for t in [
         Tool(
-            "list_sources",
-            "List the indexed sources (code repos, docs, API specs) and their versions. "
-            "Call this first if you don't know what is available.",
-            ListSourcesInput,
-            list_sources,
-        ),
-        Tool(
             "search",
-            "Search code, docs and API specs by meaning and keywords. Use this for questions "
-            "('how is the token refreshed?') or when you don't know an exact name. Returns "
-            "short ranked snippets with citations.",
+            "Search the real code and docs of the project's libraries, at the exact versions it "
+            "locks. Use it before writing, changing or explaining code that uses a third-party "
+            "library, instead of relying on memory. Name libraries plainly (['typer']); one "
+            "that isn't indexed yet is indexed on the spot. Returns ranked snippets, each with "
+            "a citation and a link.",
             SearchInput,
             search,
         ),
         Tool(
-            "read_file",
-            "Read exact lines of a file (or an API endpoint) from an indexed source. Use it to "
-            "see more context around a search result: pass the source and path from its "
-            "citation and a line range.",
-            ReadFileInput,
-            read_file,
+            "read",
+            "Read exact lines, numbered, by citation (from a search result) or by library and "
+            "path, e.g. to see the whole function around a result. Also checks a citation: an "
+            "unknown source, path or line range is an error.",
+            ReadInput,
+            read,
         ),
         Tool(
-            "find_symbol",
-            "Find where a function, class, method or docs section is defined, by exact name. "
-            "Use this when you know the name (e.g. 'Signer.sign' or 'sign'); use search for "
-            "questions.",
-            FindSymbolInput,
-            find_symbol,
+            "libraries",
+            "List the project's dependencies with their locked versions and whether each is "
+            "indexed (search indexes missing ones automatically), plus other indexed sources.",
+            LibrariesInput,
+            libraries,
         ),
-        Tool(
-            "get_endpoint",
-            "Get the full description of an API endpoint: parameters, request body and "
-            "responses. Accepts a template ('/pet/{petId}') or a real path ('/pet/42').",
-            GetEndpointInput,
-            get_endpoint,
-        ),
+        # For the CLI and `grepwise tool`; not served over MCP.
+        Tool("list_sources", "List every indexed source (code repos, docs, API specs) with its "
+             "version, status and counts.", ListSourcesInput, list_sources),
+        Tool("read_file", "Read exact lines of an indexed file (or an API endpoint) by source "
+             "ref and path.", ReadFileInput, read_file),
+        Tool("find_symbol", "Find where a function, class, method or docs section is defined, "
+             "by exact name.", FindSymbolInput, find_symbol),
+        Tool("get_endpoint", "Get an API endpoint's full description (parameters, body, "
+             "responses) by template or real path.", GetEndpointInput, get_endpoint),
     ]
-}
+}  # fmt: skip
+
+MCP_TOOLS = ("search", "read", "libraries")
 
 
 def _clean_schema(node: Any) -> Any:
@@ -101,7 +102,7 @@ def _clean_schema(node: Any) -> Any:
     return out
 
 
-def tool_schemas() -> list[dict[str, Any]]:
+def tool_schemas(names: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
     return [
         {
             "name": t.name,
@@ -109,6 +110,7 @@ def tool_schemas() -> list[dict[str, Any]]:
             "input_schema": _clean_schema(t.input_model.model_json_schema()),
         }
         for t in TOOLS.values()
+        if names is None or t.name in names
     ]
 
 
@@ -158,6 +160,7 @@ def is_error(result: dict[str, Any]) -> bool:
 
 
 __all__ = [
+    "MCP_TOOLS",
     "TOOLS",
     "Tool",
     "ToolContext",
