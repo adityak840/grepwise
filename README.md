@@ -12,7 +12,7 @@ An MCP server that gives your coding assistant the real source code and docs of 
 Requires [uv](https://docs.astral.sh/uv/) and git.
 
 ```bash
-git clone <repo-url> grepwise && cd grepwise
+git clone https://github.com/adityak840/grepwise && cd grepwise
 make install       # installs the `grepwise` command
 grepwise setup     # downloads the model, registers the MCP server with Claude Code
 ```
@@ -71,3 +71,7 @@ make lint
 ```
 
 Python projects and GitHub-hosted packages only, for now.
+
+## License
+
+MIT

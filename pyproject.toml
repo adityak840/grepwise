@@ -1,11 +1,13 @@
 [project]
 name = "grepwise"
 version = "0.1.0"
-description = "Ask questions about codebases, docs and APIs, with exact citations."
+description = "MCP server giving coding assistants the exact-version source and docs of your dependencies, with citations."
 authors = [
-    { name = "adityak840", email = "khandelwal.aditya840@gmail.com" }
+    { name = "Aditya Khandelwal", email = "khandelwal.aditya840@gmail.com" }
 ]
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "fastembed>=0.8.1",
     "httpx>=0.28.1",
