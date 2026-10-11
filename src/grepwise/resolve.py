@@ -102,6 +102,9 @@ def tag_candidates(package: str, version: str, pattern: str | None = None) -> li
         for n in names:
             out += [f"{n}-{v}", f"{n}-v{v}", f"{n}@{v}", f"{n}/v{v}"]
         out += [f"release-{v}", f"release/{v}", f"rel-{v}"]
+        # Rust repos that also ship a Python package (polars: py-2.0.0); the SQLAlchemy
+        # family (alembic: rel_1_20_0).
+        out += [f"py-{v}", f"py-v{v}", f"rel_{v.replace('.', '_')}"]
     return list(dict.fromkeys(out))
 
 

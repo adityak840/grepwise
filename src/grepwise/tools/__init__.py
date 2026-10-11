@@ -42,8 +42,9 @@ TOOLS: dict[str, Tool] = {
             "Search the real code and docs of the project's libraries, at the exact versions it "
             "locks. Use it before writing, changing or explaining code that uses a third-party "
             "library, instead of relying on memory. Name libraries plainly (['typer']); one "
-            "that isn't indexed yet is indexed on the spot. Returns ranked snippets, each with "
-            "a citation and a link.",
+            "that isn't indexed yet is indexed on the spot. Without `libraries`, it searches "
+            "the project's dependencies. Returns ranked snippets, each with a citation and a "
+            "link.",
             SearchInput,
             search,
         ),

@@ -14,7 +14,7 @@ from pydantic import BaseModel, ValidationError
 from rich.console import Console
 from rich.table import Table
 
-from grepwise import commands, evals, onboarding
+from grepwise import commands, evals, evals_answers, onboarding
 from grepwise.config import REPO_ROOT, get_settings
 from grepwise.db.connection import Conn, connect
 from grepwise.ingest.embed import Embedder, make_embedder
@@ -370,6 +370,82 @@ def eval_retrieval(
     if missed:
         console.print(f"Not in the top {evals.HIT_AT}: {', '.join(missed)}", style="dim")
     console.print(f"Wrote {evals.write_report(results, mode.value, out_dir)}", style="dim")
+
+
+@eval_app.command("resolution")
+def eval_resolution(
+    packages: Annotated[Path, typer.Option("--packages")] = REPO_ROOT / "evals" / "resolution.yaml",
+) -> None:
+    """Does each package resolve to the right GitHub repo and a tag for its version? (network)"""
+    with closing(connect()) as conn:
+        results = evals.run_resolution(conn, packages)
+    table = Table("package", "version", "result", "repo / tag or error")
+    for r in results:
+        if r.ok:
+            table.add_row(r.package, r.version, "[green]ok[/]", f"{r.repo} @ {r.tag}")
+        elif r.repo is not None:
+            table.add_row(
+                r.package, r.version, "[red]wrong repo[/]", f"{r.repo} (expected {r.expected_repo})"
+            )
+        else:
+            table.add_row(r.package, r.version, "[red]failed[/]", r.error or "")
+    console.print(table)
+    good = sum(r.ok for r in results)
+    console.print(f"{good}/{len(results)} resolved to the right repo and an exact-version tag.")
+
+
+@eval_app.command("answers")
+def eval_answers(
+    condition: Annotated[str, typer.Option("--condition", help="with, without, or both")] = "both",
+    ids: Annotated[
+        str | None, typer.Option("--ids", help="Only these question ids, comma-separated")
+    ] = None,
+    limit: Annotated[int | None, typer.Option("--limit", min=1, help="First N questions")] = None,
+    model: Annotated[str, typer.Option("--model", help="Claude model alias")] = "sonnet",
+    questions: Annotated[Path, typer.Option("--questions")] = REPO_ROOT
+    / "evals"
+    / "questions.yaml",
+    out_dir: Annotated[Path, typer.Option("--out")] = REPO_ROOT / "evals" / "runs" / "answers",
+) -> None:
+    """Claude Code with vs. without Grepwise (headless `claude -p`; uses your Claude plan)."""
+    if condition not in ("with", "without", "both"):
+        raise typer.BadParameter("with, without or both", param_hint="--condition")
+    conditions: list[evals_answers.Condition] = (
+        ["without", "with"] if condition == "both" else [condition]  # type: ignore[list-item]
+    )
+    qs = evals_answers.load_answer_questions(questions)
+    if ids:
+        wanted = {i.strip() for i in ids.split(",")}
+        qs = [q for q in qs if q.id in wanted]
+    qs = qs[:limit] if limit else qs
+
+    def show(r: evals_answers.AnswerResult) -> None:
+        mark = (
+            "error"
+            if r.error
+            else (
+                f"facts {r.fact_coverage:.0%}, file {'yes' if r.path_hit else 'no'}"
+                if r.honest is None
+                else f"honest {'yes' if r.honest else 'no'}"
+            )
+        )
+        used = ", ".join(
+            f"{n.removeprefix('mcp__grepwise__')}:{k}" for n, k in (r.tools or {}).items()
+        )
+        console.print(f"{r.condition:7} {r.id:10} {mark}  ${r.cost_usd:.2f} {r.seconds:.0f}s "
+                      f"{r.turns} turns  [{used}]", highlight=False)  # fmt: skip
+
+    command = onboarding.server_command()
+    results = evals_answers.run_answers(qs, conditions, out_dir, command, model, on_result=show)
+    summary = evals_answers.summarize_answers(results)
+    table = Table("", *summary, title=f"Claude Code ({model}) with vs. without Grepwise")
+    for metric in ["questions", "fact_coverage", "path_hit", "honest_on_absent", "used_grepwise",
+                   "used_web", "cost_usd", "seconds", "turns", "errors"]:  # fmt: skip
+        table.add_row(metric, *(f"{summary[c][metric]:.2f}" for c in summary))
+    console.print(table)
+    report = REPO_ROOT / "evals" / "results" / "answers.json"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(json.dumps({"model": model, "summary": summary}, indent=2) + "\n")
 
 
 # --- MCP (M5) ----------------------------------------------------------------------------

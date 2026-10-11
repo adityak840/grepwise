@@ -109,3 +109,42 @@ def write_report(results: Sequence[RetrievalResult], mode: str, out_dir: Path) -
     path = out_dir / f"retrieval-{mode}.json"
     path.write_text(json.dumps(report, indent=2) + "\n")
     return path
+
+
+# --- Resolution (spec 15) ----------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ResolutionResult:
+    package: str
+    version: str
+    expected_repo: str
+    repo: str | None
+    tag: str | None
+    error: str | None
+
+    @property
+    def repo_ok(self) -> bool:
+        return self.repo is not None and self.repo.lower() == self.expected_repo.lower()
+
+    @property
+    def ok(self) -> bool:
+        return self.repo_ok and self.tag is not None
+
+
+def run_resolution(conn: Conn, path: Path, resolver_factory: Any = None) -> list[ResolutionResult]:
+    """Resolve each package fresh (no cache) and compare with the expected repo."""
+    from grepwise.resolve import ResolveError, Resolver
+
+    make = resolver_factory or (lambda c: Resolver(c, refresh=True))
+    results = []
+    for row in yaml.safe_load(path.read_text()):
+        resolver = make(conn)
+        try:
+            res = resolver.resolve(row["package"], str(row["version"]))
+            results.append(ResolutionResult(row["package"], str(row["version"]), row["repo"],
+                                            res.repo_url, res.tag, None))  # fmt: skip
+        except ResolveError as exc:
+            results.append(ResolutionResult(row["package"], str(row["version"]), row["repo"],
+                                            None, None, str(exc)))  # fmt: skip
+    return results

@@ -86,17 +86,20 @@ def test_first_search_indexes_the_dependency_and_answers_from_keywords(ctx: Tool
     assert again["notes"] == []  # nothing indexed this time
 
 
-def test_leaving_libraries_out_searches_the_projects_indexed_ones(
+def test_leaving_libraries_out_searches_the_projects_dependencies(
     ctx: ToolContext, indexed: Conn
 ) -> None:
     project = workspace.load_project(ctx, None)
-    before = {s.ref for s in workspace.default_sources(ctx.conn, project)}
-    assert before == {"example/mini_repo@v1", "example/docs_repo@v2", "petstore@1.0.27"}
+    assert workspace.default_sources(ctx.conn, project) == []  # docslib isn't indexed yet
+    empty = call_tool(ctx, "search", {"query": "refreshToken"})
+    assert empty["results"] == [] and "None of this project's dependencies" in empty["notes"][0]
     call_tool(ctx, "search", {"query": "x", "libraries": ["docslib"]})  # index docslib
-    after = {s.ref for s in workspace.default_sources(ctx.conn, project)}
-    assert after == before | {"docslib@2.0"}  # its dependency, plus sources added by hand
-    out = call_tool(ctx, "search", {"query": "refreshToken"})
-    assert out["results"][0]["source"] == "example/mini_repo@v1"
+    refs = {s.ref for s in workspace.default_sources(ctx.conn, project)}
+    assert refs == {"docslib@2.0"}  # hand-added sources are reached by naming them
+    named = call_tool(ctx, "search", {"query": "refreshToken", "libraries": ["mini_repo"]})
+    assert named["results"][0]["source"] == "example/mini_repo@v1"
+    no_project = workspace.default_sources(ctx.conn, None)
+    assert {s.ref for s in no_project} >= {"docslib@2.0", "example/mini_repo@v1"}  # everything
 
 
 def test_a_repo_indexed_by_url_counts_as_the_dependency(ctx: ToolContext) -> None:
@@ -232,3 +235,13 @@ def test_a_partly_embedded_source_stays_out_of_vector_search(ctx: ToolContext) -
     embed_missing(ctx.conn, ctx.embedder, source_id, batch=1, keep_going=lambda: next(calls))
     out = call_tool(ctx, "search", {"query": "required option", "libraries": ["docslib"]})
     assert all(r["found_by"]["vector"] is None for r in out["results"])  # 1 chunk isn't enough
+
+
+def test_a_plain_name_finds_an_owner_repo_source(ctx: ToolContext, indexed: Conn) -> None:
+    """People say 'mini_repo', not 'example/mini_repo'; and a tag works as the version."""
+    for names in (["mini_repo"], ["MINI_REPO@v1"], ["example/mini_repo"]):
+        out = call_tool(ctx, "search", {"query": "refreshToken", "libraries": names})
+        assert out["results"][0]["source"] == "example/mini_repo@v1", names
+        assert out["notes"] == []
+    missing = call_tool(ctx, "search", {"query": "x", "libraries": ["mini_repo@v9"]})
+    assert missing["results"] == [] and "isn't indexed" in missing["notes"][0]

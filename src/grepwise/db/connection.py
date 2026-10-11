@@ -6,6 +6,7 @@ WAL mode lets readers keep searching while another process writes.
 
 import json
 import sqlite3
+import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from importlib import resources
@@ -39,11 +40,28 @@ def connect(path: Path | str | None = None) -> Conn:
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA busy_timeout = 5000")  # wait up to 5 s for another writer
     if not in_memory:
-        conn.execute("PRAGMA journal_mode = WAL")
+        _enable_wal(conn)
         conn.execute("PRAGMA synchronous = NORMAL")  # safe with WAL, and much faster commits
     _check_fts5(conn)
     _apply_schema(conn)
     return conn
+
+
+def _enable_wal(conn: Conn, attempts: int = 100) -> None:
+    """Switch to WAL once per file (the mode is stored in the file). Switching needs an
+    exclusive lock, and SQLite may refuse it at once rather than wait for busy_timeout, e.g.
+    when two MCP servers open a brand-new database together, so retry briefly."""
+    for _ in range(attempts):
+        try:
+            (mode,) = conn.execute("PRAGMA journal_mode").fetchone()
+            if mode != "wal":
+                conn.execute("PRAGMA journal_mode = WAL")
+            return
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc) and "busy" not in str(exc):
+                raise
+            time.sleep(0.05)
+    raise DatabaseError("The database stayed locked while switching it to WAL mode.")
 
 
 def _check_fts5(conn: Conn) -> None:

@@ -38,9 +38,9 @@ def settings(**overrides: Any) -> Settings:
 
 
 @pytest.fixture
-def ctx(indexed: Conn, embedder: FakeEmbedder) -> ToolContext:
+def ctx(indexed: Conn, embedder: FakeEmbedder, tmp_path: Path) -> ToolContext:
     index_repo(indexed, embedder, BIG_URL, "1.0", fetcher=fake_fetcher(FIXTURES / "chunkers"))
-    return ToolContext(indexed, settings(), embedder)
+    return ToolContext(indexed, settings(), embedder, cwd=tmp_path)  # no project here
 
 
 def call(ctx: ToolContext, tool: str, /, **args: Any) -> dict[str, Any]:

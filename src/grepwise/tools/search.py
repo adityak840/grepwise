@@ -68,8 +68,9 @@ def search(ctx: ToolContext, inp: SearchInput) -> SearchOutput:
         sources = default_sources(ctx.conn, project)
         if not sources:
             notes.append(
-                "Nothing is indexed for this project yet. Name a dependency in `libraries` "
-                "to index it now, or the user can run `grepwise sync`."
+                "None of this project's dependencies are indexed yet. Name one in `libraries` "
+                "to index it now (or any other indexed source: see `libraries`), or the user "
+                "can run `grepwise sync`."
             )
     hits: list[SearchHit] = []
     truncated = False

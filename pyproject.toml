@@ -41,8 +41,8 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-# Fixtures are sample input with exact line numbers: never lint or reformat them.
-extend-exclude = ["tests/fixtures"]
+# Fixtures are sample input with exact line numbers, and docs are prose: never lint them.
+extend-exclude = ["tests/fixtures", "docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]

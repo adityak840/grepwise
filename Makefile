@@ -1,22 +1,22 @@
-# Run everything from the repo root. Backend commands run inside backend/.
+# Run everything from the repo root.
 unexport VIRTUAL_ENV
 
-UV := cd backend && uv run
+UV := uv run
 GW := $(UV) grepwise
 GRAMMARS := ["python", "javascript", "typescript", "tsx"]
 
 .PHONY: setup install constraints test lint fmt demo-sources eval-retrieval
 
 setup:  ## Install dependencies, tree-sitter grammars and the local embedding model (network once)
-	cd backend && uv sync
+	uv sync
 	$(UV) python -c 'import tree_sitter_language_pack as t; t.download($(GRAMMARS))'
 	$(UV) python -c 'from grepwise.config import get_settings as g; from grepwise.ingest.embed import LocalEmbedder as L; s = g(); L(s.local_embedding_model, cache_dir=s.model_cache_dir).embed_query("warm up")'
 
-constraints:  ## Pin the tested versions from uv.lock into backend/constraints.txt
-	cd backend && uv export --frozen --no-dev --no-hashes --no-emit-project --no-header -o constraints.txt >/dev/null
+constraints:  ## Pin the tested versions from uv.lock into constraints.txt
+	uv export --frozen --no-dev --no-hashes --no-emit-project --no-header -o constraints.txt >/dev/null
 
 install: constraints  ## Install `grepwise` as a tool on your PATH, with exactly the tested versions
-	uv tool install --force ./backend --constraints backend/constraints.txt
+	uv tool install --force . --constraints constraints.txt
 	@echo "Now run: grepwise setup"
 
 test:  ## Unit + integration tests (offline; each test gets its own temporary database)

@@ -3,6 +3,7 @@ sources to search by default, and indexing a dependency on demand (spec 13, sect
 
 import difflib
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,6 +16,13 @@ from grepwise.tools.context import ToolContext
 log = logging.getLogger(__name__)
 
 STALE_INDEXING = "-10 minutes"  # an 'indexing' source older than this was abandoned
+
+# A name matches a source's name, its package, or the repo part of an owner/repo name, so
+# 'typer' finds 'fastapi/typer' (how people say it). Case-insensitive; no LIKE wildcards.
+_NAME_MATCH = (
+    "(name = :name OR package = :package OR lower(name) = lower(:name) "
+    "OR lower(substr(name, instr(name, '/') + 1)) = lower(:name))"
+)
 
 
 @dataclass(frozen=True)
@@ -42,7 +50,9 @@ def load_project(ctx: ToolContext, project: str | None) -> Project | None:
     return read_project(root) if root else None
 
 
-def find_sources(conn: Conn, where: str, params: tuple[object, ...]) -> list[Source]:
+def find_sources(
+    conn: Conn, where: str, params: tuple[object, ...] | Mapping[str, object]
+) -> list[Source]:
     rows = conn.execute(
         f"SELECT id, name, version, type, status FROM sources WHERE {where} ORDER BY name, version",
         params,
@@ -67,11 +77,12 @@ def dependency_sources(conn: Conn, dep: Dependency) -> list[Source]:
 
 
 def default_sources(conn: Conn, project: Project | None) -> list[Source]:
-    """With a project: its dependencies at their locked versions, plus everything added by
-    hand that isn't a package. Without one: everything."""
+    """With a project: its dependencies at their locked versions (other sources are reached by
+    naming them, so a Typer project's search isn't mixed with unrelated libraries). Without
+    one: everything."""
     if project is None:
         return find_sources(conn, "1", ())
-    found = {s.id: s for s in find_sources(conn, "package IS NULL", ())}
+    found: dict[int, Source] = {}
     for dep in project.dependencies:
         if dep.version:
             found.update({s.id: s for s in dependency_sources(conn, dep)})
@@ -87,9 +98,11 @@ def lookup(
     out = Lookup()
     for raw in names:
         name, _, version = raw.strip().partition("@")
+        params = {"name": name, "package": normalize_name(name), "version": version}
         if version:
-            found = find_sources(ctx.conn, "(name = ? OR package = ?) AND version = ?",
-                             (name, normalize_name(name), version))  # fmt: skip
+            # The version can also be the git tag ('typer@v0.27.2').
+            where = f"{_NAME_MATCH} AND (version = :version OR ref = :version)"
+            found = find_sources(ctx.conn, where, params)
             if found:
                 out.sources += found
             else:
@@ -111,8 +124,7 @@ def lookup(
             if found:
                 out.sources += found
                 continue
-        by_name = find_sources(ctx.conn, "name = ? OR package = ? OR lower(name) = lower(?)",
-                           (name, normalize_name(name), name))  # fmt: skip
+        by_name = find_sources(ctx.conn, _NAME_MATCH, params)
         if by_name:
             out.sources += by_name
         elif dep is None:

@@ -1,88 +1,73 @@
 # Grepwise
 
-Give your coding assistant the real docs and source of the libraries you use, at the exact version, with line-level citations it can check. Grepwise is an MCP server that runs on your machine: no Docker, no API keys.
+An MCP server that gives your coding assistant the real source code and docs of your project's dependencies, at the exact versions in your lockfile, with a citation and a link for every result.
 
-**Status:** v2 in progress ([plan](docs/spec/10-v2-plan.md)). N1 done: SQLite storage, no LLM or server needed. N2 done: index your project's dependencies by name. N3 done: three MCP tools, libraries indexed on first use. N4 done: `make install` and `grepwise setup`. The earlier web UI and built-in agent are archived at the `v0.1-webapp` tag.
+- **Exact versions:** reads `uv.lock`, `poetry.lock`, pinned requirements or `.venv`.
+- **No setup per library:** a dependency is indexed the first time it's searched.
+- **Code and docs:** code split by function and class, docs (Markdown, MDX, reStructuredText) by heading.
+- **Local:** SQLite and a local embedding model. No Docker, no API keys.
 
 ## Install
 
-Needs [uv](https://docs.astral.sh/uv/) (`brew install uv`) and git.
+Requires [uv](https://docs.astral.sh/uv/) and git.
 
 ```bash
-git clone <this repo> && cd grepwise
-make install      # puts `grepwise` on your PATH, pinned to the tested versions
-grepwise setup    # downloads the embedding model, registers Grepwise with Claude Code for every project
+git clone <repo-url> grepwise && cd grepwise
+make install       # installs the `grepwise` command
+grepwise setup     # downloads the model, registers the MCP server with Claude Code
 ```
 
-`grepwise setup --client cursor` or `--client claude-desktop` registers it there instead; `--print` only shows the config. `grepwise doctor` checks everything and says how to fix what's wrong.
+Use `grepwise setup --client cursor` or `--client claude-desktop` for other editors, and `grepwise doctor` to check the installation.
 
-Everything Grepwise stores lives in `~/.grepwise/`: the database (`grepwise.db`) and the embedding model. `grepwise gc` removes libraries you haven't searched in 30 days; deleting the folder starts over.
+## Usage
 
-## Index the libraries you use
+Restart Claude Code and ask about a library your project uses. The server provides three tools:
 
-From inside your Python project:
+| Tool | Description |
+|---|---|
+| `search` | Search a library's code and docs by name (`typer` means the version your project pins) |
+| `read` | Read exact lines by citation or path |
+| `libraries` | List the project's dependencies and what's indexed |
+
+Results look like `typer@0.27.2:docs/tutorial/options/version.md:L1-L112`, with a link to those lines on GitHub at that tag.
+
+The same index is available from the terminal:
 
 ```bash
-grepwise deps          # your dependencies, their exact versions (from uv.lock, poetry.lock, ...) and what's indexed
-grepwise sync          # index every direct dependency at its locked version
-grepwise add typer     # one library, at the version your project locks (or the latest)
-grepwise add typer==0.27.2
-grepwise add https://github.com/pallets/click --ref 8.5.0   # any GitHub repo at a tag
-grepwise add ~/code/internal-lib                             # a folder on your machine
-grepwise sources       # what's indexed
-grepwise remove typer@0.27.2
+grepwise deps                        # dependencies and locked versions
+grepwise sync                        # index all direct dependencies
+grepwise add typer==0.27.2           # a package, a GitHub URL (--ref <tag>), or a local folder
+grepwise search "make an option required"
+grepwise sources                     # list indexed sources
+grepwise gc                          # remove sources unused for 30 days
 ```
 
-Grepwise finds each package's GitHub repo from PyPI and the git tag for that exact version; if there's no matching tag it says so instead of guessing. Code is split by function and class, docs (Markdown, MDX, reStructuredText) by heading. Re-adding a version re-indexes it in place, reusing every embedding already made.
+Data is stored in `~/.grepwise`.
 
+## How it works
 
-## Use it in Claude Code / Cursor
+1. **Resolve:** the package's GitHub repo comes from PyPI, and the tag for the locked version from `git ls-remote`. If no tag matches, it reports the closest ones rather than guessing.
+2. **Index:** shallow clone, split into chunks, stored in SQLite with an FTS5 keyword index. Embeddings are computed in the background.
+3. **Search:** BM25 keyword ranking, vector similarity and exact symbol matches, merged with reciprocal rank fusion.
 
-Grepwise gives your editor's model three tools; it makes no LLM calls itself.
+## Benchmarks
 
-- **`search`**: the real code and docs of your project's libraries, by plain name (`typer` means the version your lockfile pins). A dependency that isn't indexed yet is indexed on the spot: keyword results within seconds, semantic search filling in behind.
-- **`read`**: exact, numbered lines by citation or path. It also checks a citation is real.
-- **`libraries`**: your dependencies, their locked versions, and what's indexed.
+56 questions about Typer, Click, itsdangerous and an OpenAPI spec, asked through Claude Code (Sonnet) with web search only vs. with Grepwise:
 
-Every result has a citation (`typer@0.27.2:docs/tutorial/options/required.md:L1-L74`) and a link to those exact lines on GitHub (or in a local file) that you can click.
+| | Web only | Grepwise |
+|---|---|---|
+| Expected facts in answer | 97% | 98% |
+| Cites the source file | 73% | 96% |
+| Time per answer | 19.2 s | 10.3 s |
 
-`grepwise setup` registers the server for you. To do it by hand, point your editor at `grepwise mcp`:
-
-```json
-{ "mcpServers": { "grepwise": { "command": "/absolute/path/to/grepwise", "args": ["mcp"] } } }
-```
-
-Then just ask, e.g. *"How do I make an option required in Typer?"* The server tells the model to look libraries up instead of answering from memory. There's also an `ask` prompt (in Claude Code: `/mcp__grepwise__ask`).
-
-## The same tools from the terminal
-
-```bash
-grepwise search "how do I make an option required?"
-grepwise search "find pet by id" --source petstore --kind endpoint
-grepwise symbol TimestampSigner
-grepwise read pallets/itsdangerous@2.2.0 src/itsdangerous/timed.py --lines 20-60
-grepwise endpoint "GET /pet/42" --source petstore
-grepwise verify "petstore@1.0.27:GET /pet/{petId}:L1-L27"
-grepwise tool search '{"query": "required option", "limit": 3}'  # raw JSON, as a model sees it
-```
-
-Search results show `vec #3 / kw #1`: where each result ranked in meaning-based (vector) and exact-word (keyword) search before the two lists were merged. Add `--timing` to see how long each step took, or `--mode keyword|vector` to try one side alone.
-
-## How well does search work?
-
-`evals/questions.yaml` has 56 questions over itsdangerous, Typer, Click and Petstore, each with the files a correct answer must cite.
-
-```bash
-make demo-sources     # index the eval sources (about 10 minutes the first time)
-make eval-retrieval   # Hit@5 and MRR for hybrid, keyword-only and vector-only search
-```
-
-Hit@5 is the share of questions with an expected file in the top 5 results.
+Search finds the right file in the top 5 for 88% of questions; package resolution is correct for 33/33 popular packages. Method and details: [docs/spec](docs/spec/15-n5-prove-it.md).
 
 ## Development
 
 ```bash
-make setup  # dependencies, grammars and the embedding model, for working on the code (backend/.venv)
-make test   # offline: each test gets its own temporary database
-make lint   # ruff + mypy
+make setup     # dev environment in .venv
+make test
+make lint
 ```
+
+Python projects and GitHub-hosted packages only, for now.

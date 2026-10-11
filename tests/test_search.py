@@ -339,7 +339,7 @@ def test_two_processes_creating_the_database_at_once(tmp_path: Path) -> None:
         except Exception as exc:  # pragma: no cover - the failure being tested for
             errors.append(exc)
 
-    threads = [threading.Thread(target=open_db) for _ in range(4)]
+    threads = [threading.Thread(target=open_db) for _ in range(8)]
     for t in threads:
         t.start()
     for t in threads:

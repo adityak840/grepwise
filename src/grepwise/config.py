@@ -10,8 +10,8 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# backend/src/grepwise/config.py -> repo root
-REPO_ROOT = Path(__file__).resolve().parents[3]
+# src/grepwise/config.py -> repo root
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):

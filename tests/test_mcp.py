@@ -22,8 +22,8 @@ HANDSHAKE_VERSION = "2025-11-25"  # the classic initialize handshake most client
 
 
 @pytest.fixture
-def ctx(indexed: Conn, embedder: FakeEmbedder) -> ToolContext:
-    return ToolContext(indexed, get_settings(), embedder)
+def ctx(indexed: Conn, embedder: FakeEmbedder, tmp_path: Path) -> ToolContext:
+    return ToolContext(indexed, get_settings(), embedder, cwd=tmp_path)  # no project here
 
 
 def with_client(ctx: ToolContext, fn: Any) -> Any:

@@ -1,0 +1,29 @@
+{
+  "model": "sonnet",
+  "summary": {
+    "with": {
+      "questions": 56,
+      "fact_coverage": 0.9803921568627451,
+      "path_hit": 0.9607843137254902,
+      "honest_on_absent": 1.0,
+      "cost_usd": 0.06934220714285715,
+      "seconds": 10.292660714285715,
+      "turns": 3.1964285714285716,
+      "used_grepwise": 1.0,
+      "used_web": 0.0,
+      "errors": 0.0
+    },
+    "without": {
+      "questions": 56,
+      "fact_coverage": 0.9705882352941176,
+      "path_hit": 0.7254901960784313,
+      "honest_on_absent": 1.0,
+      "cost_usd": 0.05853405178571429,
+      "seconds": 19.21982142857143,
+      "turns": 4.321428571428571,
+      "used_grepwise": 0.0,
+      "used_web": 0.8571428571428571,
+      "errors": 0.0
+    }
+  }
+}

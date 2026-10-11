@@ -54,6 +54,8 @@ def test_github_repo_prefers_source_keys_and_skips_sponsor_links() -> None:
         (["core@3.1.0"], "core", "3.1.0", "core@3.1.0"),
         (["v1.0.0"], "lib", "1.0", "v1.0.0"),  # 1.0 == 1.0.0
         (["V4.0"], "lib", "4.0", "V4.0"),  # case-insensitive fallback
+        (["py-1.9.0", "py-2.0.0", "rs-0.53.0"], "polars", "2.0.0", "py-2.0.0"),
+        (["rel_1_19_2", "rel_1_20_0"], "alembic", "1.20.0", "rel_1_20_0"),
         (["v1.0", "v2.0"], "lib", "3.0", None),
     ],
 )
