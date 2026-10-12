@@ -220,6 +220,12 @@ def monorepo(root: Path) -> Path:
 def test_find_package_dir(tmp_path: Path) -> None:
     root = monorepo(tmp_path)
     assert find_package_dir(root, "playwright-core") == "packages/playwright-core"
+    # ag-grid: a stale scripts/package.json with the same name, shallower than the real one.
+    write(root, {"scripts/package.json": {"name": "playwright-core", "version": "1.0.0"},
+                 "packages/playwright-core/package.json":
+                     {"name": "playwright-core", "version": "1.61.0"}})  # fmt: skip
+    assert find_package_dir(root, "playwright-core", "1.61.0") == "packages/playwright-core"
+    assert find_package_dir(root, "playwright-core") == "scripts"  # no version: shallowest
     assert find_package_dir(root, "playwright-internal") is None  # the root itself
     assert find_package_dir(root, "missing") is None
 

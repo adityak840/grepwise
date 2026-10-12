@@ -74,7 +74,7 @@ class Ecosystem:
         """Why this package can't be indexed by name (e.g. npm's @types/*), or None."""
         return None
 
-    def locate_package(self, root: Path, name: str) -> str | None:
+    def locate_package(self, root: Path, name: str, version: str | None = None) -> str | None:
         """The package's folder in a cloned repo holding several, when the registry didn't
         say; None for the repo root."""
         return None

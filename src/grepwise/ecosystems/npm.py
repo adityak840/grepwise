@@ -205,22 +205,27 @@ def _clean(directory: object) -> str | None:
     return folder if folder and ".." not in folder.split("/") else None
 
 
-def find_package_dir(root: Path, name: str) -> str | None:
+def find_package_dir(root: Path, name: str, version: str | None = None) -> str | None:
     """The folder in a cloned monorepo whose package.json is `name` (when the registry didn't
-    say), e.g. packages/playwright-core; None if it's the repo root or not found."""
+    say), e.g. packages/playwright-core; None if it's the repo root or not found. Repos can
+    hold stale copies with the same name (ag-grid's scripts/package.json is an old
+    ag-grid-community), so a folder at `version` wins, then the shallowest."""
     if _json(root / "package.json").get("name") == name:
         return None
+    found: list[tuple[bool, int, str]] = []  # (not at version, depth, folder)
     stack = [(root, 0)]
     while stack:
         folder, depth = stack.pop()
         for child in sorted(folder.iterdir()):
             if not child.is_dir() or child.name.startswith(".") or child.name in SKIP_DIRS:
                 continue
-            if _json(child / "package.json").get("name") == name:
-                return child.relative_to(root).as_posix()
-            if depth + 1 < MAX_PACKAGE_DEPTH:
+            manifest = _json(child / "package.json")
+            if manifest.get("name") == name:
+                at_version = version is not None and str(manifest.get("version")) == version
+                found.append((not at_version, depth, child.relative_to(root).as_posix()))
+            elif depth + 1 < MAX_PACKAGE_DEPTH:
                 stack.append((child, depth + 1))
-    return None
+    return min(found)[2] if found else None
 
 
 class Npm(Ecosystem):
@@ -262,8 +267,8 @@ class Npm(Ecosystem):
         specific = [f"{name}@{version}", f"{unscoped}@{version}", f"{unscoped}@v{version}"]
         return list(dict.fromkeys(specific + default_tag_candidates(unscoped, version)))
 
-    def locate_package(self, root: Path, name: str) -> str | None:
-        return find_package_dir(root, name)
+    def locate_package(self, root: Path, name: str, version: str | None = None) -> str | None:
+        return find_package_dir(root, name, version)
 
 
 NPM = Npm()

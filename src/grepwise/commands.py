@@ -76,7 +76,7 @@ def add_package(
         package=res.package,
         ecosystem=res.ecosystem,
         subpath=res.subpath,
-        locate=lambda root: eco.locate_package(root, res.package),
+        locate=lambda root: eco.locate_package(root, res.package, version),
     )
 
 

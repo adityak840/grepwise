@@ -238,7 +238,9 @@ def _index_dependency(ctx: ToolContext, dep: Dependency, notes: list[str]) -> li
         summary = index_repo(
             ctx.conn, ctx.embedder, res.repo_url, res.tag, name=dep.name, version=dep.version,
             package=dep.name, ecosystem=dep.ecosystem, subpath=res.subpath,
-            locate=lambda root: get_ecosystem(dep.ecosystem).locate_package(root, dep.name),
+            locate=lambda root: get_ecosystem(dep.ecosystem).locate_package(
+                root, dep.name, dep.version
+            ),
             embed=False,
         )  # fmt: skip
     except Exception as exc:
