@@ -1,17 +1,18 @@
 """The answer eval (with a fake `claude` runner) and the resolution eval (fake resolver)."""
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from grepwise import evals_answers
 from grepwise.db.connection import Conn
 from grepwise.evals import run_resolution
 from grepwise.evals_answers import (
     FILE_CONDITIONS,
     AnswerQuestion,
+    Condition,
     claude_args,
     prepare_project,
     prompt_for,
@@ -64,7 +65,7 @@ def test_prompt_and_args_are_the_same_apart_from_grepwise(tmp_path: Path) -> Non
 def test_file_conditions_differ_only_in_claude_md_and_grepwise(tmp_path: Path) -> None:
     args = {c: claude_args("p", c, tmp_path / "m.json", "sonnet") for c in FILE_CONDITIONS}
 
-    def opt(c: str, name: str) -> str:
+    def opt(c: Condition, name: str) -> str:
         return args[c][args[c].index(name) + 1]
 
     for c in FILE_CONDITIONS:
@@ -79,10 +80,12 @@ def test_file_conditions_run_in_a_project_with_their_claude_md(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     synced: list[Path] = []
-    monkeypatch.setattr(
-        evals_answers.subprocess, "run",
-        lambda args, cwd, **kw: (synced.append(cwd), (cwd / ".venv").mkdir()),
-    )  # fmt: skip
+
+    def fake_sync(args: list[str], cwd: Path, **kw: Any) -> None:
+        synced.append(cwd)
+        (cwd / ".venv").mkdir()
+
+    monkeypatch.setattr(subprocess, "run", fake_sync)
     cwds: dict[str, Path] = {}
 
     def fake_claude(args: list[str], cwd: Path) -> dict[str, Any]:

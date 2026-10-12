@@ -261,7 +261,10 @@ def test_add_hints_only_name_what_would_work(
 ) -> None:
     """`grepwise add <name>` looks the name up on PyPI: suggest it only when PyPI has it."""
     on_pypi = {"pypi.org/pypi/requests/json", "pypi.org/pypi/requests/2.0/json"}
-    pypi = lambda url: {"info": {}} if url.split("://")[1] in on_pypi else None  # noqa: E731
+
+    def pypi(url: str) -> dict[str, Any] | None:
+        return {"info": {}} if url.split("://")[1] in on_pypi else None
+
     monkeypatch.setattr(workspace, "Resolver", lambda c, **kw: Resolver(c, http_get=pypi, **kw))
 
     def note(lib: str) -> str:

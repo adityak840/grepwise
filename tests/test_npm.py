@@ -9,7 +9,7 @@ import pytest
 
 from grepwise.config import get_settings
 from grepwise.db.connection import Conn
-from grepwise.ecosystems import load_project, parse_library
+from grepwise.ecosystems import HttpGet, load_project, parse_library
 from grepwise.ecosystems.npm import NPM, find_package_dir, repository
 from grepwise.ingest.embed import FakeEmbedder
 from grepwise.ingest.pipeline import index_repo
@@ -278,7 +278,7 @@ def ctx(conn: Conn, embedder: FakeEmbedder, mixed: Path, tmp_path: Path,
         "src/chart/LineChart.tsx": "export function LineChart(props: Props) {\n"
                                    "  return generateCategoricalChart(props);\n}\n",
     })  # fmt: skip
-    registries = {
+    registries: dict[str, HttpGet] = {
         "npm": FakeNpm({"/recharts/2.15.0": {"repository": "github:recharts/recharts"}}),
         "pypi": lambda url: None,  # PyPI's recharts 0.1.0 doesn't exist here
     }
