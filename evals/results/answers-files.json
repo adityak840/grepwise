@@ -1,0 +1,44 @@
+{
+  "model": "sonnet",
+  "summary": {
+    "files": {
+      "questions": 4,
+      "fact_coverage": 1.0,
+      "path_hit": 0.6666666666666666,
+      "honest_on_absent": 1.0,
+      "cost_usd": 0.045078099999999996,
+      "seconds": 15.19975,
+      "turns": 4.5,
+      "used_grepwise": 0.0,
+      "used_web": 0.0,
+      "used_files": 1.0,
+      "errors": 0.0
+    },
+    "files-grepwise": {
+      "questions": 4,
+      "fact_coverage": 1.0,
+      "path_hit": 0.6666666666666666,
+      "honest_on_absent": 1.0,
+      "cost_usd": 0.049404425,
+      "seconds": 37.202,
+      "turns": 2.75,
+      "used_grepwise": 0.75,
+      "used_web": 0.0,
+      "used_files": 0.0,
+      "errors": 0.0
+    },
+    "files-hint": {
+      "questions": 4,
+      "fact_coverage": 1.0,
+      "path_hit": 0.6666666666666666,
+      "honest_on_absent": 1.0,
+      "cost_usd": 0.03636065,
+      "seconds": 11.9775,
+      "turns": 3.5,
+      "used_grepwise": 0.0,
+      "used_web": 0.0,
+      "used_files": 1.0,
+      "errors": 0.0
+    }
+  }
+}

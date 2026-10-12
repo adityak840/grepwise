@@ -396,7 +396,14 @@ def eval_resolution(
 
 @eval_app.command("answers")
 def eval_answers(
-    condition: Annotated[str, typer.Option("--condition", help="with, without, or both")] = "both",
+    condition: Annotated[
+        str,
+        typer.Option(
+            "--condition",
+            help="with, without, both; or files, files-hint, files-grepwise, files-all "
+            "(in a project with the libraries installed)",
+        ),
+    ] = "both",
     ids: Annotated[
         str | None, typer.Option("--ids", help="Only these question ids, comma-separated")
     ] = None,
@@ -408,12 +415,19 @@ def eval_answers(
     out_dir: Annotated[Path, typer.Option("--out")] = REPO_ROOT / "evals" / "runs" / "answers",
 ) -> None:
     """Claude Code with vs. without Grepwise (headless `claude -p`; uses your Claude plan)."""
-    if condition not in ("with", "without", "both"):
-        raise typer.BadParameter("with, without or both", param_hint="--condition")
-    conditions: list[evals_answers.Condition] = (
-        ["without", "with"] if condition == "both" else [condition]  # type: ignore[list-item]
-    )
+    groups: dict[str, list[evals_answers.Condition]] = {
+        "both": ["without", "with"],
+        "files-all": list(evals_answers.FILE_CONDITIONS),
+        **{c: [c] for c in ("with", "without", *evals_answers.FILE_CONDITIONS)},
+    }
+    if condition not in groups:
+        raise typer.BadParameter(", ".join(groups), param_hint="--condition")
+    conditions = groups[condition]
+    files = any(c in evals_answers.FILE_CONDITIONS for c in conditions)
     qs = evals_answers.load_answer_questions(questions)
+    if files:  # an OpenAPI spec can't be installed in a project; unindexed libraries can
+        qs = [q for q in qs if not any(s.startswith("petstore@") for s in q.sources)]
+        qs += evals_answers.load_answer_questions(questions.parent / "questions_unindexed.yaml")
     if ids:
         wanted = {i.strip() for i in ids.split(",")}
         qs = [q for q in qs if q.id in wanted]
@@ -432,7 +446,7 @@ def eval_answers(
         used = ", ".join(
             f"{n.removeprefix('mcp__grepwise__')}:{k}" for n, k in (r.tools or {}).items()
         )
-        console.print(f"{r.condition:7} {r.id:10} {mark}  ${r.cost_usd:.2f} {r.seconds:.0f}s "
+        console.print(f"{r.condition:14} {r.id:10} {mark}  ${r.cost_usd:.2f} {r.seconds:.0f}s "
                       f"{r.turns} turns  [{used}]", highlight=False)  # fmt: skip
 
     command = onboarding.server_command()
@@ -440,10 +454,10 @@ def eval_answers(
     summary = evals_answers.summarize_answers(results)
     table = Table("", *summary, title=f"Claude Code ({model}) with vs. without Grepwise")
     for metric in ["questions", "fact_coverage", "path_hit", "honest_on_absent", "used_grepwise",
-                   "used_web", "cost_usd", "seconds", "turns", "errors"]:  # fmt: skip
+                   "used_files", "used_web", "cost_usd", "seconds", "turns", "errors"]:  # fmt: skip
         table.add_row(metric, *(f"{summary[c][metric]:.2f}" for c in summary))
     console.print(table)
-    report = REPO_ROOT / "evals" / "results" / "answers.json"
+    report = REPO_ROOT / "evals" / "results" / ("answers-files.json" if files else "answers.json")
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text(json.dumps({"model": model, "summary": summary}, indent=2) + "\n")
 

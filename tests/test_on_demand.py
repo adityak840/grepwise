@@ -12,7 +12,7 @@ from grepwise.db.connection import Conn, connect
 from grepwise.ingest import pipeline
 from grepwise.ingest.embed import FakeEmbedder
 from grepwise.ingest.pipeline import embed_missing, embed_priority, index_repo
-from grepwise.resolve import Resolver
+from grepwise.resolve import ResolveError, Resolver
 from grepwise.search.links import link_for
 from grepwise.tools import ToolContext, call_tool, workspace
 from grepwise.worker import EmbeddingWorker, release_lease, take_lease
@@ -75,7 +75,8 @@ def test_first_search_indexes_the_dependency_and_answers_from_keywords(ctx: Tool
     assert out["results"][0]["link"].startswith(
         "https://github.com/example/docs_repo/blob/v2.0/"
     )  # the tag, not the package version
-    assert "was just indexed" in out["notes"][0] and "keyword search" in out["notes"][0]
+    assert "was just indexed" in out["notes"][0]
+    assert "Semantic search is off until docslib@2.0 (0%)" in out["notes"][1]
     assert status_of(ctx, "docslib") == "embedding 0%"
 
     assert ctx.worker is not None
@@ -120,8 +121,8 @@ def test_unknown_and_busy_libraries_become_notes(ctx: ToolContext) -> None:
     unknown = call_tool(ctx, "search", {"query": "x", "libraries": ["docslb"]})
     assert unknown["results"] == [] and "Did you mean docslib" in unknown["notes"][0]
     ctx.conn.execute(
-        "INSERT INTO sources (type, name, url, version, package, status) "
-        "VALUES ('repo', 'docslib', ?, '2.0', 'docslib', 'indexing')", (DOCS_URL,),
+        "INSERT INTO sources (type, name, url, version, package, ecosystem, status) "
+        "VALUES ('repo', 'docslib', ?, '2.0', 'docslib', 'pypi', 'indexing')", (DOCS_URL,),
     )  # fmt: skip
     busy = call_tool(ctx, "search", {"query": "x", "libraries": ["docslib"]})
     assert "being indexed by another session" in busy["notes"][0]
@@ -235,6 +236,67 @@ def test_a_partly_embedded_source_stays_out_of_vector_search(ctx: ToolContext) -
     embed_missing(ctx.conn, ctx.embedder, source_id, batch=1, keep_going=lambda: next(calls))
     out = call_tool(ctx, "search", {"query": "required option", "libraries": ["docslib"]})
     assert all(r["found_by"]["vector"] is None for r in out["results"])  # 1 chunk isn't enough
+
+
+def test_one_unfinished_source_turns_vectors_off_for_the_whole_search(
+    ctx: ToolContext, indexed: Conn
+) -> None:
+    """Otherwise the vector list holds only the finished source's chunks, and fusion ranks
+    them as highly as the keyword matches (a requests changelog first for a Playwright
+    question)."""
+    both = {"query": "required option", "libraries": ["docslib", "mini_repo"]}
+    call_tool(ctx, "search", both)  # indexes docslib, without vectors
+    out = call_tool(ctx, "search", both)
+    assert out["results"] and all(r["found_by"]["vector"] is None for r in out["results"])
+    assert any("off until docslib@2.0 (0%) is embedded" in n for n in out["notes"])
+    assert not any("mini_repo" in n for n in out["notes"])  # it's fully embedded
+    assert ctx.worker is not None
+    ctx.worker.run_until_idle()
+    done = call_tool(ctx, "search", both)
+    assert any(r["found_by"]["vector"] for r in done["results"]) and done["notes"] == []
+
+
+def test_add_hints_only_name_what_would_work(
+    ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`grepwise add <name>` looks the name up on PyPI: suggest it only when PyPI has it."""
+    on_pypi = {"pypi.org/pypi/requests/json", "pypi.org/pypi/requests/2.0/json"}
+    pypi = lambda url: {"info": {}} if url.split("://")[1] in on_pypi else None  # noqa: E731
+    monkeypatch.setattr(workspace, "Resolver", lambda c, **kw: Resolver(c, http_get=pypi, **kw))
+
+    def note(lib: str) -> str:
+        out = call_tool(ctx, "search", {"query": "x", "libraries": [lib]})
+        return str(out["notes"][0])
+
+    assert "`grepwise add requests`" in note("requests")
+    assert "`grepwise add requests==2.0`" in note("requests@2.0")
+    for npm in ("recharts", "playwright-core@1.61.0"):
+        assert "PyPI has no" in note(npm) and "grepwise add https://github.com/" in note(npm)
+        assert "`grepwise add recharts`" not in note(npm)
+    assert "It isn't a package name" in note("vercel/next.js")
+
+    def offline(url: str) -> None:
+        raise ResolveError("Couldn't reach PyPI")
+
+    monkeypatch.setattr(workspace, "Resolver", lambda c, **kw: Resolver(c, http_get=offline, **kw))
+    assert "if it's on PyPI, or else" in note("recharts")
+
+
+def test_another_version_of_an_indexed_repo_suggests_its_url(
+    ctx: ToolContext, indexed: Conn
+) -> None:
+    out = call_tool(ctx, "search", {"query": "x", "libraries": ["mini_repo@v9"]})
+    assert "isn't indexed" in out["notes"][0]
+    assert "grepwise add https://github.com/example/mini_repo --ref <tag for v9>" in out["notes"][0]
+
+
+def test_naming_the_locked_version_indexes_it_too(ctx: ToolContext) -> None:
+    """'docslib@2.0' is the project's own version: indexed on demand like 'docslib'."""
+    out = call_tool(ctx, "search", {"query": "required option", "libraries": ["docslib@2.0"]})
+    assert out["results"] and out["results"][0]["source"] == "docslib@2.0"
+    assert "was just indexed" in out["notes"][0]
+    other = call_tool(ctx, "search", {"query": "x", "libraries": ["docslib@1.0"]})
+    assert other["results"] == [] and "isn't indexed" in other["notes"][0]
 
 
 def test_a_plain_name_finds_an_owner_repo_source(ctx: ToolContext, indexed: Conn) -> None:

@@ -141,4 +141,4 @@ def test_no_project_here(home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyP
     monkeypatch.chdir(empty)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     out = run("deps")
-    assert out.exit_code == 1 and "No Python project here" in out.output
+    assert out.exit_code == 1 and "No project here" in out.output

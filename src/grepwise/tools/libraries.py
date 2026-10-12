@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from grepwise.ecosystems import get_ecosystem
 from grepwise.tools.context import ToolContext
 from grepwise.tools.errors import returns_tool_errors
 from grepwise.tools.workspace import (
@@ -28,6 +29,7 @@ class LibrariesInput(BaseModel):
 
 class Library(BaseModel):
     name: str
+    ecosystem: str = Field(description="Which package registry it comes from, e.g. pypi")
     version: str | None
     direct: bool
     status: str = Field(
@@ -43,8 +45,16 @@ class OtherSource(BaseModel):
     status: str
 
 
+class ProjectFolder(BaseModel):
+    root: str
+    ecosystem: str
+
+
 class LibrariesOutput(BaseModel):
     project: str | None = Field(description="The project folder, or null if none was found")
+    projects: list[ProjectFolder] = Field(
+        description="Every project found from there, e.g. a backend/ and a ui/ folder"
+    )
     dependencies: list[Library]
     transitive_not_listed: int
     other_sources: list[OtherSource] = Field(
@@ -78,14 +88,16 @@ def libraries(ctx: ToolContext, inp: LibrariesInput) -> LibrariesOutput:
             continue
         if found:
             status = _status(ctx, [s.id for s in found], [s.status for s in found])
-        elif not dep.from_pypi:
-            status = "unavailable: not from PyPI (add it by URL or folder)"
+        elif not dep.from_registry:
+            registry = get_ecosystem(dep.ecosystem).registry
+            status = f"unavailable: not from {registry} (add it by URL or folder)"
         elif dep.version is None:
             status = "unavailable: no locked or installed version"
         else:
             status = "not indexed"
-        listed.append(Library(name=dep.name, version=dep.version, direct=dep.direct,
-                              status=status, sources=[s.ref for s in found]))  # fmt: skip
+        listed.append(Library(name=dep.name, ecosystem=dep.ecosystem, version=dep.version,
+                              direct=dep.direct, status=status,
+                              sources=[s.ref for s in found]))  # fmt: skip
     others = [
         OtherSource(ref=s.ref, type=s.type, status=_status(ctx, [s.id], [s.status]))
         for s in find_sources(ctx.conn, "package IS NULL", ())
@@ -93,6 +105,10 @@ def libraries(ctx: ToolContext, inp: LibrariesInput) -> LibrariesOutput:
     ]
     return LibrariesOutput(
         project=str(project.root) if project else None,
+        projects=[
+            ProjectFolder(root=str(r.path), ecosystem=r.ecosystem)
+            for r in (project.roots if project else [])
+        ],
         dependencies=listed,
         transitive_not_listed=hidden,
         other_sources=others,

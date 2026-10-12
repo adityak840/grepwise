@@ -155,7 +155,7 @@ def test_search_unknown_library_is_a_note(ctx: ToolContext) -> None:
     result = call(ctx, "search", query="x", libraries=["example/mini_rep"])
     assert result["results"] == []
     assert "Did you mean example/mini_repo" in result["notes"][0]
-    assert "grepwise add example/mini_rep" in result["notes"][0]
+    assert "It isn't a package name" in result["notes"][0]  # owner/repo: add it by URL
 
 
 # --- read_file ---------------------------------------------------------------------------

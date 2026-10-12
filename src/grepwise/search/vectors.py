@@ -85,8 +85,11 @@ def _load(conn: Conn, source_id: int, generation: int, model_id: str, dim: int) 
 
 CACHE = VectorCache()
 
-# A source that is still being embedded is left out of vector search until most of it has
-# vectors: ranking only the few chunks that happen to be embedded would put noise first.
+# Vector search waits until every source being searched has most of its vectors. Ranking only
+# the few chunks that happen to be embedded would put noise first; and leaving out just the
+# unfinished source would fill the vector list with the other sources' chunks, which fusion
+# then ranks as highly as the keyword matches (a requests changelog first for a Playwright
+# question).
 MIN_COVERAGE = 0.9
 
 
@@ -100,13 +103,16 @@ def vector_search(
     *,
     cache: VectorCache = CACHE,
 ) -> list[int]:
-    """The `n` chunk ids closest to `query` (cosine similarity), best first; ties by id."""
+    """The `n` chunk ids closest to `query` (cosine similarity), best first; ties by id. Empty
+    while any of the sources is under MIN_COVERAGE."""
     q = np.asarray(query, dtype=np.float32)
+    matrices = [cache.get(conn, s, g, model_id, len(q)) for s, g in sources]
+    if any(m.coverage < MIN_COVERAGE for m in matrices):
+        return []
     all_ids: list[npt.NDArray[np.int64]] = []
     all_scores: list[npt.NDArray[np.float32]] = []
-    for source_id, generation in sources:
-        m = cache.get(conn, source_id, generation, model_id, len(q))
-        if len(m.ids) == 0 or m.coverage < MIN_COVERAGE:
+    for m in matrices:
+        if len(m.ids) == 0:
             continue
         scores = m.vectors @ q  # vectors are unit length: dot product = cosine similarity
         keep = np.isin(m.kinds, list(kinds)) if kinds else np.ones(len(m.ids), dtype=bool)

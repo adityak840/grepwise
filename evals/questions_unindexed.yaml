@@ -1,0 +1,108 @@
+# Questions about libraries Grepwise hasn't indexed (spec 17): the first question about each
+# one in the "files-grepwise" condition indexes it on the spot, as in real first use. Not used
+# by the retrieval eval, which needs its sources indexed beforehand.
+#
+# Each answer was checked in the installed package (2026-10-12). Paths are repo paths:
+# encode/httpx and jd/tenacity keep the package at the root, python-attrs/attrs under src/.
+
+- id: new-httpx-01
+  category: unindexed
+  question: Does an httpx Client follow redirects by default? Where is that default set?
+  sources: [httpx@0.28.1]
+  expect:
+    paths: [httpx/_client.py]
+    # Client.__init__ and request()/get() take follow_redirects: bool = False.
+    facts: [follow_redirects, "false"]
+
+- id: new-httpx-02
+  category: unindexed
+  question: What timeout does httpx use if I don't set one, and which phases of a request does it cover?
+  sources: [httpx@0.28.1]
+  expect:
+    paths: [httpx/_config.py]
+    # DEFAULT_TIMEOUT_CONFIG = Timeout(timeout=5.0): connect, read, write and pool.
+    facts: ["5", pool]
+
+- id: new-httpx-03
+  category: unindexed
+  # 0.28 removed the `app=` shortcut on Client; a WSGI app goes through WSGITransport.
+  question: How do I make an httpx Client call my WSGI app directly, without running a server?
+  sources: [httpx@0.28.1]
+  expect:
+    paths: [httpx/_transports/wsgi.py]
+    facts: [WSGITransport, transport]
+
+- id: new-httpx-04
+  category: unindexed
+  question: Does response.raise_for_status() raise for a 302 redirect response?
+  sources: [httpx@0.28.1]
+  expect:
+    paths: [httpx/_models.py]
+    # Anything that isn't is_success (2xx) raises; 3xx gets the "Redirect response" message.
+    facts: [HTTPStatusError]
+
+- id: new-httpx-absent
+  category: unindexed
+  # httpx has no HTTP response cache (that's a separate package, e.g. hishel).
+  question: How do I turn on httpx's built-in response caching?
+  sources: [httpx@0.28.1]
+  expect:
+    absent: true
+
+- id: new-tenacity-01
+  category: unindexed
+  question: With a bare @retry and no arguments, when does tenacity stop, how long does it wait between attempts, and which errors does it retry?
+  sources: [tenacity@9.2.1]
+  expect:
+    paths: [tenacity/__init__.py]
+    # Retrying defaults: stop=stop_never, wait=wait_none(), retry=retry_if_exception_type().
+    facts: [stop_never, wait_none]
+
+- id: new-tenacity-02
+  category: unindexed
+  question: When every attempt fails, what exception does tenacity raise, and how do I get my original exception raised instead?
+  sources: [tenacity@9.2.1]
+  expect:
+    paths: [tenacity/__init__.py]
+    facts: [RetryError, reraise]
+
+- id: new-tenacity-03
+  category: unindexed
+  question: How do I retry an async function with tenacity, using the retrying object directly rather than the decorator?
+  sources: [tenacity@9.2.1]
+  expect:
+    paths: [tenacity/asyncio/__init__.py]
+    facts: [AsyncRetrying]
+
+- id: new-tenacity-absent
+  category: unindexed
+  # tenacity retries calls; it has no circuit breaker.
+  question: How do I configure tenacity's circuit breaker to open after five failures?
+  sources: [tenacity@9.2.1]
+  expect:
+    absent: true
+
+- id: new-attrs-01
+  category: unindexed
+  question: Are classes made with attrs.define slotted by default, and is that different from the older attr.s?
+  sources: [attrs@26.1.0]
+  expect:
+    paths: [src/attr/_next_gen.py, src/attr/_make.py]
+    # define(..., slots=True, ...) vs attrs(..., slots=False, ...).
+    facts: [slots=True, slots=False]
+
+- id: new-attrs-02
+  category: unindexed
+  question: How do I make an attrs class immutable, and what error do I get if I assign to a field afterwards?
+  sources: [attrs@26.1.0]
+  expect:
+    paths: [src/attr/exceptions.py, src/attr/_make.py, src/attr/_next_gen.py]
+    facts: [frozen, FrozenInstanceError]
+
+- id: new-attrs-absent
+  category: unindexed
+  # Annotations aren't enforced at runtime; you add validators (e.g. attrs.validators.instance_of).
+  question: Does attrs automatically check field values against their type annotations when I create an instance?
+  sources: [attrs@26.1.0]
+  expect:
+    absent: true

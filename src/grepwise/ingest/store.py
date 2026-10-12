@@ -53,19 +53,21 @@ def begin_source(
     *,
     ref: str | None = None,
     package: str | None = None,
+    ecosystem: str = "",
 ) -> int:
-    """Create or reuse the `sources` row and mark it `indexing`. Returns its id."""
+    """Create or reuse the `sources` row and mark it `indexing`. Returns its id. `ecosystem`
+    is set for sources added by package ('pypi'), and '' otherwise."""
     row = conn.execute(
         f"""
-        INSERT INTO sources (type, name, url, version, subpath, ref, package, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'indexing')
-        ON CONFLICT (type, name, version) DO UPDATE
+        INSERT INTO sources (type, name, url, version, subpath, ref, package, ecosystem, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'indexing')
+        ON CONFLICT (type, ecosystem, name, version) DO UPDATE
           SET url = excluded.url, subpath = excluded.subpath, ref = excluded.ref,
               package = excluded.package, status = 'indexing', error = NULL,
               updated_at = {_NOW}
         RETURNING id
         """,
-        (type_, name, url, version, subpath, ref, package),
+        (type_, name, url, version, subpath, ref, package, ecosystem),
     ).fetchone()
     assert row is not None
     return int(row[0])
@@ -127,12 +129,13 @@ def touch_sources(conn: Conn, source_ids: Iterable[int]) -> None:
     )
 
 
-def indexed_packages(conn: Conn) -> set[tuple[str, str]]:
-    """(package, version) of every package source that is ready."""
+def indexed_packages(conn: Conn) -> set[tuple[str, str, str]]:
+    """(ecosystem, package, version) of every package source that is ready."""
     rows = conn.execute(
-        "SELECT package, version FROM sources WHERE package IS NOT NULL AND status = 'ready'"
+        "SELECT ecosystem, package, version FROM sources "
+        "WHERE package IS NOT NULL AND status = 'ready'"
     )
-    return {(p, v) for p, v in rows}
+    return {(e, p, v) for e, p, v in rows}
 
 
 def replace_content(

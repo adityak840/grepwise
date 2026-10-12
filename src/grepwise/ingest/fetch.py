@@ -14,7 +14,7 @@ CLONE_TIMEOUT_SECONDS = 300
 _GITHUB_URL = re.compile(
     r"^https://github\.com/(?P<owner>[A-Za-z0-9-]+)/(?P<repo>[A-Za-z0-9._-]+?)(?:\.git)?/?$"
 )
-_SAFE_REF = re.compile(r"^[A-Za-z0-9._/-]+$")
+_SAFE_REF = re.compile(r"^[A-Za-z0-9@._/-]+$")  # '@': npm monorepo tags ('@scope/pkg@1.0')
 
 
 class FetchError(Exception):
@@ -45,7 +45,7 @@ def parse_github_url(url: str) -> RepoRef:
 
 
 def validate_ref(ref: str) -> str:
-    if not _SAFE_REF.match(ref) or ref.startswith("-") or ".." in ref:
+    if not _SAFE_REF.match(ref) or ref.startswith("-") or ".." in ref or ref == "@":
         raise FetchError(f"Invalid ref: {ref!r}. Use a tag or branch name.")
     return ref
 

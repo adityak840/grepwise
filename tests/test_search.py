@@ -1,6 +1,7 @@
 """Hybrid search, end to end on the test database (FakeEmbedder; no network)."""
 
 import shutil
+import sqlite3
 from contextlib import closing
 from pathlib import Path
 
@@ -365,6 +366,67 @@ def test_a_version_1_database_upgrades_and_keeps_its_data(
         row = new.execute("SELECT name, status, ref, package FROM sources").fetchone()
         assert row == ("pallets/itsdangerous", "ready", None, None)
         assert count(new, "SELECT count(*) FROM resolutions") == 0
+
+
+def test_step_5_rebuilds_sources_without_losing_chunks(
+    db_path: Path, embedder: FakeEmbedder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The sources table is rebuilt with foreign keys off: documents, chunks, keyword rows
+    and embeddings must all survive, and package sources become 'pypi'."""
+    monkeypatch.setattr(connection, "SCHEMA_STEPS", SCHEMA_STEPS[:4])
+    fetch = fake_fetcher(FIXTURES / "docs_repo")
+    with closing(connect(db_path)) as old:
+        old.execute(  # what N4's begin_source did, which had no ecosystem
+            "INSERT INTO sources (type, name, url, version, ref, package, status) "
+            "VALUES ('repo', 'docslib', ?, '2.0', 'v2.0', 'docslib', 'pending')", (DOCS_URL,),
+        )  # fmt: skip
+    monkeypatch.undo()
+    with closing(connect(db_path)) as conn:  # upgraded: index, then go back to step 4 data
+        index_repo(conn, embedder, DOCS_URL, "v2", fetcher=fetch)
+        before = [count(conn, f"SELECT count(*) FROM {t}")
+                  for t in ("documents", "chunks", "chunks_fts", "embeddings")]  # fmt: skip
+        assert before[1] > 0
+        rows = conn.execute("SELECT name, ecosystem FROM sources ORDER BY name").fetchall()
+        assert rows == [("docslib", "pypi"), ("example/docs_repo", "")]
+        assert conn.execute("PRAGMA foreign_keys").fetchone() == (1,)  # back on
+    # Re-run step 5 on a copy that is back at step 4, holding the chunks.
+    with closing(connect(db_path)) as conn:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.executescript(
+            "BEGIN; CREATE TABLE s4 AS SELECT id, type, name, url, version, subpath, commit_sha,"
+            " status, error, embedding_model, generation, created_at, updated_at, ref, package,"
+            " embed_lease_until, last_used_at FROM sources; DROP TABLE sources;"
+            " ALTER TABLE s4 RENAME TO sources; ALTER TABLE resolutions DROP COLUMN subpath;"
+            " PRAGMA user_version = 4; COMMIT;"
+        )
+    with closing(connect(db_path)) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone() == (len(SCHEMA_STEPS),)
+        after = [count(conn, f"SELECT count(*) FROM {t}")
+                 for t in ("documents", "chunks", "chunks_fts", "embeddings")]  # fmt: skip
+        assert after == before
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        # The new rule: the same name and version may exist once per ecosystem.
+        conn.execute(
+            "INSERT INTO sources (type, name, url, version, package, ecosystem) "
+            "VALUES ('repo', 'docslib', 'u', '2.0', 'docslib', 'npm')"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO sources (type, name, url, version, package, ecosystem) "
+                "VALUES ('repo', 'docslib', 'u', '2.0', 'docslib', 'pypi')"
+            )
+
+
+def test_rows_from_an_older_running_grepwise_are_repaired(db_path: Path) -> None:
+    """An MCP server started before the upgrade still inserts package sources without an
+    ecosystem; the next connection marks them PyPI so lookups by ecosystem find them."""
+    with closing(connect(db_path)) as conn:
+        conn.execute(
+            "INSERT INTO sources (type, name, url, version, package) "
+            "VALUES ('repo', 'typer', 'u', '0.27.2', 'typer')"
+        )
+    with closing(connect(db_path)) as conn:
+        assert conn.execute("SELECT ecosystem FROM sources").fetchone() == ("pypi",)
 
 
 def test_the_same_lines_from_two_sources_appear_once(conn: Conn, embedder: FakeEmbedder) -> None:

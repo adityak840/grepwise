@@ -6,7 +6,7 @@ import re
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from grepwise.ingest.store import touch_sources
-from grepwise.search.citations import CitationError, format_citation, parse_citation
+from grepwise.search.citations import CitationError, format_citation, parse_citation, split_ref
 from grepwise.search.links import link_for
 from grepwise.tools.context import ToolContext
 from grepwise.tools.errors import ToolError, ToolFailure, returns_tool_errors
@@ -109,7 +109,7 @@ def read(ctx: ToolContext, inp: ReadInput) -> ReadOutput:
         )
     if inp.citation is not None and inp.end_line is None and out.end_line < (end or 0):
         notes.append("The cited range was longer than one read; continue from next_start_line.")
-    name, _, version = source_ref.rpartition("@")
+    name, version = split_ref(source_ref)
     row = ctx.conn.execute(
         "SELECT url, ref, type, id FROM sources WHERE name = ? AND version = ? "
         "ORDER BY type LIMIT 1",
@@ -135,7 +135,7 @@ def read(ctx: ToolContext, inp: ReadInput) -> ReadOutput:
 
 
 def _has_document(ctx: ToolContext, source_ref: str, path: str) -> bool:
-    name, _, version = source_ref.rpartition("@")
+    name, version = split_ref(source_ref)
     return (
         ctx.conn.execute(
             "SELECT 1 FROM documents d JOIN sources s ON s.id = d.source_id "

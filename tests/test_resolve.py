@@ -5,15 +5,16 @@ from typing import Any
 
 import pytest
 
+from grepwise.config import get_settings
 from grepwise.db.connection import Conn
+from grepwise.ecosystems import tag_candidates
+from grepwise.ecosystems.pypi import github_repo
 from grepwise.resolve import (
     ResolveError,
     Resolver,
     closest_tags,
-    github_repo,
     load_known_sources,
     pick_tag,
-    tag_candidates,
 )
 
 # Shaped like real PyPI responses (pydantic-settings and click, October 2026).
@@ -75,6 +76,31 @@ def test_user_known_sources_win(tmp_path: Path) -> None:
     known = load_known_sources(tmp_path)
     assert known["sqlalchemy"]["tag"] == "v{version}"
     assert known["internal-lib"]["repo"] == "https://github.com/me/lib"
+
+
+def test_a_broken_user_file_is_skipped_not_fatal(tmp_path: Path) -> None:
+    (tmp_path / "known_sources.toml").write_text('[lib\nrepo = "x"\n')  # bad TOML
+    assert load_known_sources(tmp_path)["sqlalchemy"]["tag"] == "rel_{version_underscored}"
+    (tmp_path / "known_sources.toml").write_text('lib = "x"\n[ok]\nrepo = "y"\n')  # not a table
+    known = load_known_sources(tmp_path)
+    assert "lib" not in known and known["ok"]["repo"] == "y"
+
+
+def test_the_resolver_reads_the_users_known_sources_by_default(
+    conn: Conn, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """It used to load only the built-in file, so entries users were told to add did nothing."""
+    monkeypatch.setenv("GREPWISE_HOME", str(tmp_path))
+    get_settings.cache_clear()
+    (tmp_path / "known_sources.toml").write_text(
+        '[internal_lib]\nrepo = "https://github.com/me/lib"\n'
+    )
+    try:
+        known = Resolver(conn).known
+    finally:
+        get_settings.cache_clear()
+    assert known["internal-lib"]["repo"] == "https://github.com/me/lib"
+    assert known["sqlalchemy"]["tag"] == "rel_{version_underscored}"  # built-in kept
 
 
 class FakePyPI:

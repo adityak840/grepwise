@@ -1,58 +1,32 @@
-"""Reading a Python project's dependencies and their exact versions (spec 12, section 3).
+"""Python projects and PyPI (spec 12, section 3; spec 16).
 
 Declared (direct) dependencies come from pyproject.toml and requirements*.txt. Versions come
 from the first of uv.lock, poetry.lock, pinned requirements lines and the installed .venv
-that has the package. Everything else in a lockfile is a transitive dependency.
+that has the package. Everything else in a lockfile is a transitive dependency. A package's
+repo comes from its PyPI page (project_urls).
 """
 
 import re
 import tomllib
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from grepwise.ecosystems import Dependency, Ecosystem, HttpGet, RegistryInfo, github_url
+
+PYPI_RELEASE = "https://pypi.org/pypi/{name}/{version}/json"
+PYPI_LATEST = "https://pypi.org/pypi/{name}/json"
 _MARKERS = ("pyproject.toml", "uv.lock", "poetry.lock", "setup.py")
 _NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 _PIN = re.compile(
     r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*===?\s*([A-Za-z0-9._+!-]+)\s*(?:;.*)?$"
 )
+# project_urls keys most likely to name the source repo, best first (matched as substrings).
+_URL_KEYS = ("source", "repository", "code", "github", "homepage", "home")
 
 
 def normalize_name(name: str) -> str:
     """PEP 503: 'Markdown_It.py' -> 'markdown-it-py'."""
     return re.sub(r"[-_.]+", "-", name).lower()
-
-
-@dataclass(frozen=True)
-class Dependency:
-    name: str  # normalized
-    version: str | None  # None if no lockfile, pin or install has it
-    direct: bool  # declared by the project (vs. only pulled in by another package)
-    version_from: str | None  # 'uv.lock', 'poetry.lock', 'requirements.txt', '.venv'
-    from_pypi: bool = True  # False for git or path sources in a lockfile
-
-
-@dataclass(frozen=True)
-class Project:
-    root: Path
-    name: str | None  # the project's own package, which is not a dependency
-    dependencies: list[Dependency]
-
-    def get(self, name: str) -> Dependency | None:
-        wanted = normalize_name(name)
-        return next((d for d in self.dependencies if d.name == wanted), None)
-
-
-def find_root(start: Path) -> Path | None:
-    """The nearest folder at or above `start` that looks like a Python project. Stops below
-    the home folder, so a stray ~/pyproject.toml never claims every project."""
-    home = Path.home().resolve()
-    for folder in [start.resolve(), *start.resolve().parents]:
-        if folder == home or folder == folder.parent:
-            return None
-        if any((folder / m).is_file() for m in _MARKERS) or _requirement_files(folder):
-            return folder
-    return None
 
 
 def _requirement_files(root: Path) -> list[Path]:
@@ -146,7 +120,7 @@ def _installed(root: Path) -> dict[str, tuple[str, bool]]:
     return out
 
 
-def read_project(root: Path) -> Project:
+def read(root: Path) -> tuple[str | None, list[Dependency]]:
     own, direct = declared(root)
     sources = [
         ("uv.lock", _locked_uv(root)),
@@ -164,6 +138,42 @@ def read_project(root: Path) -> Project:
             if name in found:
                 (version, pypi), label = found[name], source_label
                 break
-        deps.append(Dependency(name, version, name in direct, label, pypi))
+        deps.append(Dependency(name, version, name in direct, label, pypi, "pypi"))
     deps.sort(key=lambda d: (not d.direct, d.name))
-    return Project(root, own, deps)
+    return own, deps
+
+
+def github_repo(info: dict[str, Any]) -> str | None:
+    """The GitHub repo in a release's PyPI metadata, preferring keys like 'Source'."""
+    urls = {str(k).lower(): v for k, v in (info.get("project_urls") or {}).items() if v}
+    ordered = [v for key in _URL_KEYS for k, v in urls.items() if key in k]
+    ordered += [info.get("home_page") or "", *urls.values(), info.get("download_url") or ""]
+    for url in ordered:
+        if repo := github_url(str(url)):
+            return repo
+    return None
+
+
+class PyPI(Ecosystem):
+    name = "pypi"
+    registry = "PyPI"
+
+    def is_root(self, folder: Path) -> bool:
+        return any((folder / m).is_file() for m in _MARKERS) or bool(_requirement_files(folder))
+
+    def read(self, root: Path) -> tuple[str | None, list[Dependency]]:
+        return read(root)
+
+    def normalize(self, name: str) -> str:
+        return normalize_name(name)
+
+    def registry_info(self, name: str, version: str, http_get: HttpGet) -> RegistryInfo | None:
+        data = http_get(PYPI_RELEASE.format(name=normalize_name(name), version=version))
+        return None if data is None else RegistryInfo(github_repo(data.get("info", {})))
+
+    def latest_version(self, name: str, http_get: HttpGet) -> str | None:
+        data = http_get(PYPI_LATEST.format(name=normalize_name(name)))
+        return None if data is None else str(data.get("info", {}).get("version") or "")
+
+
+PYPI = PyPI()

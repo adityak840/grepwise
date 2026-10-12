@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from grepwise.db.connection import json_list
+from grepwise.search import citations
 from grepwise.tools.context import ToolContext
 from grepwise.tools.errors import ToolFailure, returns_tool_errors
 
@@ -14,7 +15,7 @@ SourceType = Literal["repo", "docs", "openapi"]
 
 
 def split_ref(ref: str) -> tuple[str, str | None]:
-    name, _, version = ref.strip().partition("@")
+    name, version = citations.split_ref(ref)
     return name, version or None
 
 

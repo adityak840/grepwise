@@ -4,11 +4,16 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+from grepwise import evals_answers
 from grepwise.db.connection import Conn
 from grepwise.evals import run_resolution
 from grepwise.evals_answers import (
+    FILE_CONDITIONS,
     AnswerQuestion,
     claude_args,
+    prepare_project,
     prompt_for,
     run_answers,
     score,
@@ -54,6 +59,48 @@ def test_prompt_and_args_are_the_same_apart_from_grepwise(tmp_path: Path) -> Non
         without[without.index("--disallowedTools") + 1]
         == with_[with_.index("--disallowedTools") + 1]
     )
+
+
+def test_file_conditions_differ_only_in_claude_md_and_grepwise(tmp_path: Path) -> None:
+    args = {c: claude_args("p", c, tmp_path / "m.json", "sonnet") for c in FILE_CONDITIONS}
+
+    def opt(c: str, name: str) -> str:
+        return args[c][args[c].index(name) + 1]
+
+    for c in FILE_CONDITIONS:
+        assert "Read" in opt(c, "--allowedTools") and "Read(~/**)" in opt(c, "--disallowedTools")
+        assert "Bash" in opt(c, "--disallowedTools") and opt(c, "--setting-sources") == "project"
+    assert "grepwise" in opt("files-grepwise", "--allowedTools")
+    assert "grepwise" not in opt("files", "--allowedTools") + opt("files-hint", "--allowedTools")
+    assert "--setting-sources" in claude_args("p", "with", tmp_path / "m.json", "sonnet")
+
+
+def test_file_conditions_run_in_a_project_with_their_claude_md(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    synced: list[Path] = []
+    monkeypatch.setattr(
+        evals_answers.subprocess, "run",
+        lambda args, cwd, **kw: (synced.append(cwd), (cwd / ".venv").mkdir()),
+    )  # fmt: skip
+    cwds: dict[str, Path] = {}
+
+    def fake_claude(args: list[str], cwd: Path) -> dict[str, Any]:
+        cwds[args[args.index("--disallowedTools") - 2]] = cwd
+        return {"result": "max_age .venv/lib/python3.12/site-packages/itsdangerous/timed.py"}
+
+    results = run_answers([Q], list(FILE_CONDITIONS), tmp_path / "out", ["g", "mcp"], "sonnet",
+                          runner=fake_claude, projects_dir=tmp_path / "p")  # fmt: skip
+    assert all(r.path_hit for r in results)  # an installed path counts for src/...
+    for c in FILE_CONDITIONS:
+        folder = tmp_path / "p" / c
+        assert "itsdangerous==2.2.0" in (folder / "pyproject.toml").read_text()
+        assert (folder / "CLAUDE.md").exists() == (c != "files")
+    assert "Grepwise" in (tmp_path / "p" / "files-grepwise" / "CLAUDE.md").read_text()
+    assert ".venv" in (tmp_path / "p" / "files-hint" / "CLAUDE.md").read_text()
+    assert len(synced) == 3
+    prepare_project(tmp_path / "p", "files")  # already set up: no second sync
+    assert len(synced) == 3
 
 
 def test_run_answers_saves_and_resumes(tmp_path: Path) -> None:

@@ -2,7 +2,7 @@
 
 An MCP server that gives your coding assistant the real source code and docs of your project's dependencies, at the exact versions in your lockfile, with a citation and a link for every result.
 
-- **Exact versions:** reads `uv.lock`, `poetry.lock`, pinned requirements or `.venv`.
+- **Exact versions:** Python (`uv.lock`, `poetry.lock`, pinned requirements, `.venv`) and JavaScript/TypeScript (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `node_modules`).
 - **No setup per library:** a dependency is indexed the first time it's searched.
 - **Code and docs:** code split by function and class, docs (Markdown, MDX, reStructuredText) by heading.
 - **Local:** SQLite and a local embedding model. No Docker, no API keys.
@@ -37,6 +37,7 @@ The same index is available from the terminal:
 grepwise deps                        # dependencies and locked versions
 grepwise sync                        # index all direct dependencies
 grepwise add typer==0.27.2           # a package, a GitHub URL (--ref <tag>), or a local folder
+grepwise add npm:recharts            # an npm package (at your project's version)
 grepwise search "make an option required"
 grepwise sources                     # list indexed sources
 grepwise gc                          # remove sources unused for 30 days
@@ -46,7 +47,7 @@ Data is stored in `~/.grepwise`.
 
 ## How it works
 
-1. **Resolve:** the package's GitHub repo comes from PyPI, and the tag for the locked version from `git ls-remote`. If no tag matches, it reports the closest ones rather than guessing.
+1. **Resolve:** the package's GitHub repo comes from PyPI or npm (for a monorepo package, its folder too), and the tag for the locked version from `git ls-remote`. If no tag matches, it reports the closest ones rather than guessing.
 2. **Index:** shallow clone, split into chunks, stored in SQLite with an FTS5 keyword index. Embeddings are computed in the background.
 3. **Search:** BM25 keyword ranking, vector similarity and exact symbol matches, merged with reciprocal rank fusion.
 
@@ -70,7 +71,7 @@ make test
 make lint
 ```
 
-Python projects and GitHub-hosted packages only, for now.
+Python and JavaScript/TypeScript projects (a repo with a Python `backend/` and a JS `ui/` is found as both); GitHub-hosted packages only, for now.
 
 ## License
 

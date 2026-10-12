@@ -86,7 +86,7 @@ claude mcp add --scope user grepwise -- grepwise mcp   # every project, no paths
 
 ## 7. Scope
 
-- **Ecosystem: Python only** (`uv.lock`, `poetry.lock`, pinned `requirements*.txt`, else the installed `.venv`). The resolver is written so another ecosystem (JS/TS lockfiles and the npm registry) can be added later as one more module.
+- **Ecosystem: Python only** (`uv.lock`, `poetry.lock`, pinned `requirements*.txt`, else the installed `.venv`). The resolver is written so another ecosystem (JS/TS lockfiles and the npm registry) can be added later as one more module. **Lifted 2026-10-12:** JS/TS, Go and Rust are planned in N6 ([16-n6-more-languages.md](16-n6-more-languages.md)).
 - **Docs formats:** Markdown and MDX (done), plus **reStructuredText**, since many Python libraries (Django, SQLAlchemy, requests, NumPy) write Sphinx docs.
 - **Docs in a separate repo** (rare for Python, but it happens): a small `known_sources.toml` mapping package → docs repo, easy to extend.
 - **Local paths:** `grepwise add ~/code/internal-lib` indexes a folder at its current commit; links point to the local file.
@@ -127,6 +127,7 @@ What it decided:
 | **N3** | The new MCP surface: three tools, on-demand indexing, background embeddings, links, server instructions. Spec: [13-n3-mcp-surface.md](13-n3-mcp-surface.md) | **done** (2026-10-10): first search 2.1 s |
 | **N4** | Install and onboarding: `make install`, `grepwise setup`, `doctor`, `gc`. Spec: [14-n4-install.md](14-n4-install.md) | **done** (2026-10-10) |
 | **N5** | Prove it: Claude Code with vs. without (headless `claude -p`), a resolution eval on 33 popular packages, a short README. Spec: [15-n5-prove-it.md](15-n5-prove-it.md) | **done** (2026-10-10): file cited 73% → 96%, 47% faster |
+| **N6** | More languages: an ecosystem interface, then JS/TS (npm), Go, Rust. Spec: [16-n6-more-languages.md](16-n6-more-languages.md) | N6a and N6b (JS/TS) done (2026-10-12); Go and Rust later |
 | **Then** | You use it for a week of real work; we fix whatever annoys you; then the recap and quiz | |
 
 Same process as before: a spec per milestone, built by the other session, reviewed here, then a short quiz.

@@ -18,7 +18,7 @@ from grepwise.config import get_settings
 Conn = sqlite3.Connection
 
 # Schema steps, applied in order; `PRAGMA user_version` records how many have run.
-SCHEMA_STEPS = ["schema.sql", "schema_2.sql", "schema_3.sql", "schema_4.sql"]
+SCHEMA_STEPS = ["schema.sql", "schema_2.sql", "schema_3.sql", "schema_4.sql", "schema_5.sql"]
 
 
 class DatabaseError(Exception):
@@ -44,6 +44,12 @@ def connect(path: Path | str | None = None) -> Conn:
         conn.execute("PRAGMA synchronous = NORMAL")  # safe with WAL, and much faster commits
     _check_fts5(conn)
     _apply_schema(conn)
+    # A Grepwise from before schema step 5 that is still running (an MCP server started before
+    # an upgrade) writes package sources without an ecosystem; they were all PyPI.
+    if "schema_5.sql" in SCHEMA_STEPS:
+        conn.execute(
+            "UPDATE sources SET ecosystem = 'pypi' WHERE package IS NOT NULL AND ecosystem = ''"
+        )
     return conn
 
 
@@ -84,15 +90,26 @@ def _apply_schema(conn: Conn) -> None:
         )
     for step in range(version, len(SCHEMA_STEPS)):
         sql = resources.files("grepwise.db").joinpath(SCHEMA_STEPS[step]).read_text()
-        with transaction(conn, immediate=True):
-            # Another process (a second MCP server starting at the same moment) may have
-            # applied this step while we waited for the write lock.
-            (current,) = conn.execute("PRAGMA user_version").fetchone()
-            if current > step:
-                continue
-            for statement in _statements(sql):
-                conn.execute(statement)
-            conn.execute(f"PRAGMA user_version = {step + 1}")
+        # A step that rebuilds a table other tables point at runs with foreign keys off (the
+        # pragma only changes outside a transaction), then checks them before turning them on.
+        rebuilds = "-- needs: foreign_keys off" in sql
+        if rebuilds:
+            conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            with transaction(conn, immediate=True):
+                # Another process (a second MCP server starting at the same moment) may have
+                # applied this step while we waited for the write lock.
+                (current,) = conn.execute("PRAGMA user_version").fetchone()
+                if current > step:
+                    continue
+                for statement in _statements(sql):
+                    conn.execute(statement)
+                if rebuilds and conn.execute("PRAGMA foreign_key_check").fetchone():
+                    raise DatabaseError(f"{SCHEMA_STEPS[step]} broke a foreign key.")
+                conn.execute(f"PRAGMA user_version = {step + 1}")
+        finally:
+            if rebuilds:
+                conn.execute("PRAGMA foreign_keys = ON")
 
 
 def _statements(sql: str) -> Iterator[str]:

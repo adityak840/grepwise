@@ -10,7 +10,7 @@ from grepwise.tools.caps import OVERHEAD_CHARS, size
 from grepwise.tools.context import ToolContext
 from grepwise.tools.errors import returns_tool_errors
 from grepwise.tools.libraries import PROJECT_FIELD
-from grepwise.tools.workspace import default_sources, load_project, lookup
+from grepwise.tools.workspace import default_sources, load_project, lookup, still_embedding
 
 KINDS = {
     "docs": ["section"],
@@ -24,8 +24,9 @@ class SearchInput(BaseModel):
     query: str = Field(min_length=1, description="A question, or code names, in plain language.")
     libraries: list[str] | None = Field(
         default=None,
-        description="Library names, e.g. ['typer']: the version this project locks (indexed "
-        "on the spot if needed). Also 'name@version' or any indexed source name. Leave out to "
+        description="Library names, e.g. ['typer'] or ['recharts']: the version this project "
+        "locks, Python or JavaScript (indexed on the spot if needed). Also 'name@version', "
+        "'npm:name' when a name exists in both, or any indexed source name. Leave out to "
         "search all of the project's indexed libraries.",
     )
     kind: Literal["code", "docs", "api"] | None = Field(
@@ -76,6 +77,12 @@ def search(ctx: ToolContext, inp: SearchInput) -> SearchOutput:
     truncated = False
     if sources:
         touch_sources(ctx.conn, [s.id for s in sources])
+        if unfinished := still_embedding(ctx, sources):
+            notes.append(
+                f"Semantic search is off until {', '.join(unfinished)} "
+                f"{'is' if len(unfinished) == 1 else 'are'} embedded: results come from "
+                "keyword search, so search again later for better ranking."
+            )
         found_results = hybrid_search(
             ctx.conn, ctx.embedder, inp.query, kinds=KINDS[inp.kind] if inp.kind else None,
             limit=inp.limit, token_budget=None, candidates=ctx.settings.search_candidates,

@@ -12,11 +12,13 @@ from rich.table import Table
 
 from grepwise.config import get_settings
 from grepwise.db.connection import Conn, connect
+from grepwise.ecosystems import Dependency, Project, get_ecosystem, load_project, parse_library
+from grepwise.ecosystems.pypi import normalize_name
 from grepwise.ingest import store
 from grepwise.ingest.embed import Embedder, make_embedder
 from grepwise.ingest.pipeline import IndexSummary, index_local, index_repo
-from grepwise.project import Dependency, Project, find_root, normalize_name, read_project
 from grepwise.resolve import Resolver
+from grepwise.search.citations import split_ref
 
 console = Console()
 
@@ -40,13 +42,13 @@ def _fail(message: str) -> typer.Exit:
 
 
 def _project() -> Project:
-    root = find_root(Path.cwd())
-    if root is None:
+    project = load_project(Path.cwd())
+    if project is None:
         raise _fail(
-            "No Python project here: no pyproject.toml, uv.lock, poetry.lock or "
-            "requirements*.txt in this folder or above it."
+            "No project here: no pyproject.toml, requirements*.txt or package.json in this "
+            "folder, above it, or one level down."
         )
-    return read_project(root)
+    return project
 
 
 def _is_path(target: str) -> bool:
@@ -63,6 +65,7 @@ def add_package(
     console.print(
         f"{res.package} {version}: {res.repo_url} at tag {res.tag}{cached}", highlight=False
     )
+    eco = get_ecosystem(res.ecosystem)
     return index_repo(
         conn,
         embedder,
@@ -71,6 +74,9 @@ def add_package(
         name=res.package,
         version=version,
         package=res.package,
+        ecosystem=res.ecosystem,
+        subpath=res.subpath,
+        locate=lambda root: eco.locate_package(root, res.package),
     )
 
 
@@ -78,7 +84,8 @@ def add(
     target: Annotated[
         str,
         typer.Argument(
-            help="A package (typer, typer==0.27.2), a GitHub repo URL, or a folder (./lib)"
+            help="A package (typer, typer==0.27.2, npm:recharts, npm:recharts@2.15.0), "
+            "a GitHub repo URL, or a folder (./lib)"
         ),
     ],
     ref: Annotated[str | None, typer.Option("--ref", help="Tag or branch, for a repo URL")] = None,
@@ -102,12 +109,13 @@ def add(
             elif _is_path(target):
                 summary = index_local(conn, embedder, Path(target), name=name, version=version)
             else:
-                spec = _SPEC.fullmatch(target.strip())
-                if spec is None:
-                    raise _fail(f"Not a package, URL or folder: {target!r}.")
-                package, pinned = normalize_name(spec[1]), spec[2]
-                resolver = Resolver(conn, refresh=refresh)
-                chosen = pinned or _project_version(package) or resolver.latest_version(package)
+                eco_name, package, pinned = _package_target(target)
+                resolver = Resolver(conn, ecosystem=eco_name, refresh=refresh)
+                chosen = (
+                    pinned
+                    or _project_version(package, eco_name)
+                    or resolver.latest_version(package)
+                )
                 summary = add_package(conn, embedder, resolver, package, chosen)
     except typer.Exit:
         raise
@@ -116,10 +124,24 @@ def add(
     print_summary(summary)
 
 
-def _project_version(package: str) -> str | None:
+def _package_target(target: str) -> tuple[str, str, str | None]:
+    """(ecosystem, package, pinned version): 'typer', 'typer==0.27.2' (PyPI), or with an
+    ecosystem prefix, 'npm:recharts', 'npm:@scope/pkg@1.2.3'."""
+    eco_name, name, version = parse_library(target)
+    if eco_name and eco_name != "pypi":
+        if not name:
+            raise _fail(f"Not a package: {target!r}.")
+        return eco_name, get_ecosystem(eco_name).normalize(name), version or None
+    spec = _SPEC.fullmatch(target.strip().removeprefix("pypi:"))
+    if spec is None:
+        raise _fail(f"Not a package, URL or folder: {target!r}.")
+    return "pypi", normalize_name(spec[1]), spec[2]
+
+
+def _project_version(package: str, eco_name: str = "pypi") -> str | None:
     """The version locked in the current project, if there is one; says where it came from."""
-    root = find_root(Path.cwd())
-    dep = read_project(root).get(package) if root else None
+    project = load_project(Path.cwd())
+    dep = project.get(package, eco_name) if project else None
     if dep and dep.version:
         console.print(f"Using {package} {dep.version} from {dep.version_from}", style="dim")
         return dep.version
@@ -137,11 +159,17 @@ def deps(
     with closing(connect()) as conn:
         indexed = store.indexed_packages(conn)
     shown = [d for d in project.dependencies if all_ or d.direct]
-    table = Table("package", "version", "kind", "version from", "indexed", title=str(project.root))
+    table = Table(
+        "package", "ecosystem", "version", "kind", "version from", "indexed",
+        title=", ".join(str(r.path) for r in project.roots),
+    )  # fmt: skip
     for d in shown:
-        mark = "✓" if (d.name, d.version) in indexed else ""
-        kind = ("direct" if d.direct else "transitive") + ("" if d.from_pypi else ", not PyPI")
-        table.add_row(d.name, d.version or "-", kind, d.version_from or "-", mark)
+        mark = "✓" if (d.ecosystem, d.name, d.version) in indexed else ""
+        registry = get_ecosystem(d.ecosystem).registry
+        kind = ("direct" if d.direct else "transitive") + (
+            "" if d.from_registry else f", not {registry}"
+        )
+        table.add_row(d.name, d.ecosystem, d.version or "-", kind, d.version_from or "-", mark)
     console.print(table)
     hidden = len(project.dependencies) - len(shown)
     if hidden:
@@ -168,14 +196,21 @@ def sync(
     outcomes: list[_Outcome] = []
     with closing(connect()) as conn:
         indexed = store.indexed_packages(conn)
-        resolver = Resolver(conn, refresh=refresh)
+        resolvers: dict[str, Resolver] = {}
         embedder: Embedder | None = None
         for d in targets:
-            if not d.from_pypi or d.version is None:
-                why = "not from PyPI" if not d.from_pypi else "no locked or installed version"
+            if not d.from_registry or d.version is None:
+                registry = get_ecosystem(d.ecosystem).registry
+                why = (
+                    f"not from {registry}" if not d.from_registry
+                    else "no locked or installed version"
+                )  # fmt: skip
                 outcomes.append(_Outcome(d, "skipped", why))
                 continue
-            if (d.name, d.version) in indexed:
+            if d.ecosystem not in resolvers:
+                resolvers[d.ecosystem] = Resolver(conn, ecosystem=d.ecosystem, refresh=refresh)
+            resolver = resolvers[d.ecosystem]
+            if (d.ecosystem, d.name, d.version) in indexed:
                 outcomes.append(_Outcome(d, "indexed"))
                 continue
             try:
@@ -212,7 +247,7 @@ def remove(
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Don't ask for confirmation")] = False,
 ) -> None:
     """Delete an indexed source (its embeddings are kept, so re-adding it is quick)."""
-    name, _, version = ref.rpartition("@")
+    name, version = split_ref(ref)
     if not name or not version:
         raise _fail("Give the source as name@version, e.g. typer@0.27.2.")
     with closing(connect()) as conn:

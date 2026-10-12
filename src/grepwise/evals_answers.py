@@ -7,6 +7,16 @@ File, shell and editing tools are blocked in both, and `--strict-mcp-config` kee
 MCP servers out. Answers are scored automatically: expected facts mentioned, an expected file
 referenced (citation or link), and honesty on questions the sources can't answer.
 Results are saved per question, so a run can stop (quota, Ctrl+C) and resume.
+
+The "files" conditions (spec 17) ask in a real project instead: Typer, Click and itsdangerous,
+plus httpx, tenacity and attrs (which Grepwise hasn't indexed), installed in its .venv; file tools
+(Read, Grep, Glob) and the web allowed, so Claude can read the installed source, as it can in your
+projects:
+  - files:          nothing else;
+  - files-hint:     plus a one-line CLAUDE.md saying the library source is in .venv;
+  - files-grepwise: plus Grepwise and a one-line CLAUDE.md saying to use it.
+The projects live in the temp folder, and file tools are denied the home folder, so a search can't
+wander through the user's disk (macOS protects folders like Music and asks about them).
 """
 
 import json
@@ -20,13 +30,33 @@ from typing import Any, Literal
 
 import yaml
 
-Condition = Literal["with", "without"]
+Condition = Literal["with", "without", "files", "files-hint", "files-grepwise"]
+FILE_CONDITIONS: tuple[Condition, ...] = ("files", "files-hint", "files-grepwise")
 GREPWISE_TOOLS = ["mcp__grepwise__search", "mcp__grepwise__read", "mcp__grepwise__libraries"]
 # The baseline is memory plus the web. File tools are blocked too: in an empty folder they
 # can only go looking around the user's disk (which made macOS ask for access to other
 # apps' data in the first run), and that isn't the comparison meant here.
 COMMON_TOOLS = ["WebSearch", "WebFetch"]
 BLOCKED_TOOLS = ["Bash", "Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "Task"]
+FILE_TOOLS = ["Read", "Grep", "Glob"]
+# Deny rules for Read also cover Grep and Glob when their path is inside the folder.
+OUTSIDE_PROJECT = ["Read(~/**)", "Read(//Users/**)", "Read(//Volumes/**)"]
+# The eval sources, plus three libraries Grepwise hasn't indexed (evals/questions_unindexed.yaml).
+PROJECT_DEPENDENCIES = [
+    "typer==0.27.2", "click==8.5.0", "itsdangerous==2.2.0",
+    "httpx==0.28.1", "tenacity==9.2.1", "attrs==26.1.0",
+]  # fmt: skip
+CLAUDE_MD: dict[str, str] = {
+    "files-hint": (
+        "- This project's dependencies are installed in `.venv/lib/python*/site-packages/`. "
+        "For a question about a library, read its source there (the exact installed version) "
+        "instead of answering from memory.\n"
+    ),
+    "files-grepwise": (
+        "- For any question about a third-party library, search it with the Grepwise MCP tools "
+        "first and cite the links it returns, even if you think you know the answer.\n"
+    ),
+}
 # Phrases that say the answer isn't there (for `absent` questions).
 _NOT_THERE = re.compile(
     r"doesn'?t (provide|support|have|offer|include|exist)|does not (provide|support|have|offer|"
@@ -102,7 +132,9 @@ def score(q: AnswerQuestion, answer: str) -> tuple[float, bool, bool | None]:
         return (1.0 if honest else 0.0), False, honest
     facts = [f for f in q.facts if f.lower() in text]
     coverage = len(facts) / len(q.facts) if q.facts else 1.0
-    hits = [p for p in q.paths if p.lower() in text]
+    # An installed package has no src/ folder: '.venv/.../click/core.py' counts for
+    # 'src/click/core.py'.
+    hits = [p for p in q.paths if p.lower() in text or p.lower().removeprefix("src/") in text]
     path_hit = (len(hits) == len(q.paths)) if q.all_paths else bool(hits)
     return coverage, path_hit, None
 
@@ -137,14 +169,55 @@ def parse_stream(stdout: str) -> dict[str, Any]:
     return {**result, "tools": tools}
 
 
+def uses_grepwise(condition: Condition) -> bool:
+    return condition in ("with", "files-grepwise")
+
+
 def claude_args(prompt: str, condition: Condition, mcp_config: Path, model: str) -> list[str]:
-    allowed = COMMON_TOOLS + (GREPWISE_TOOLS if condition == "with" else [])
+    files = condition in FILE_CONDITIONS
+    allowed = COMMON_TOOLS + (FILE_TOOLS if files else [])
+    allowed += GREPWISE_TOOLS if uses_grepwise(condition) else []
+    blocked = (
+        [t for t in BLOCKED_TOOLS if t not in FILE_TOOLS] + OUTSIDE_PROJECT
+        if files
+        else (BLOCKED_TOOLS)
+    )
     return [
         "claude", "-p", prompt, "--output-format", "stream-json", "--verbose", "--model", model,
         "--strict-mcp-config", "--mcp-config", str(mcp_config),
-        "--allowedTools", ",".join(allowed), "--disallowedTools", ",".join(BLOCKED_TOOLS),
+        "--allowedTools", ",".join(allowed), "--disallowedTools", ",".join(blocked),
+        # Only the project's settings and CLAUDE.md: the user's own (e.g. a global "use
+        # Grepwise" rule) would leak into every condition.
+        "--setting-sources", "project",
         "--no-session-persistence",
     ]  # fmt: skip
+
+
+def prepare_project(base: Path, condition: Condition) -> Path:
+    """The project a "files" condition runs in: the eval libraries installed in .venv (once;
+    `uv sync` needs the network the first time) and the condition's CLAUDE.md."""
+    folder = base / condition
+    folder.mkdir(parents=True, exist_ok=True)
+    deps = ", ".join(f'"{d}"' for d in PROJECT_DEPENDENCIES)
+    pyproject = (
+        f'[project]\nname = "app"\nversion = "0.1.0"\nrequires-python = ">=3.12"\n'
+        f"dependencies = [{deps}]\n"
+    )
+    current = folder / "pyproject.toml"
+    if not (folder / ".venv").is_dir() or not current.is_file() or current.read_text() != pyproject:
+        (folder / "pyproject.toml").write_text(pyproject)
+        subprocess.run(["uv", "sync", "--quiet"], cwd=folder, check=True, timeout=600)
+    claude_md = folder / "CLAUDE.md"
+    if condition in CLAUDE_MD:
+        claude_md.write_text(CLAUDE_MD[condition])
+    else:
+        claude_md.unlink(missing_ok=True)
+    return folder
+
+
+def default_projects_dir() -> Path:
+    """Outside the home folder, which the file tools are denied."""
+    return Path(tempfile.gettempdir()) / "grepwise-eval-projects"
 
 
 def ask(
@@ -153,18 +226,22 @@ def ask(
     grepwise_command: list[str],
     model: str,
     runner: Runner = run_claude,
+    projects_dir: Path | None = None,
 ) -> AnswerResult:
     servers = (
         {"grepwise": {"command": grepwise_command[0], "args": grepwise_command[1:]}}
-        if condition == "with"
+        if uses_grepwise(condition)
         else {}
     )
     with tempfile.TemporaryDirectory(prefix="grepwise-eval-") as tmp:
         folder = Path(tmp)
         config = folder / "mcp.json"
         config.write_text(json.dumps({"mcpServers": servers}))
-        work = folder / "project"  # empty: no lockfile, no CLAUDE.md
-        work.mkdir()
+        if condition in FILE_CONDITIONS:
+            work = prepare_project(projects_dir or default_projects_dir(), condition)
+        else:
+            work = folder / "project"  # empty: no lockfile, no CLAUDE.md
+            work.mkdir()
         try:
             data = runner(claude_args(prompt_for(q), condition, config, model), work)
         except Exception as exc:
@@ -192,6 +269,7 @@ def run_answers(
     model: str,
     runner: Runner = run_claude,
     on_result: Callable[[AnswerResult], None] = lambda _: None,
+    projects_dir: Path | None = None,
 ) -> list[AnswerResult]:
     """Ask every question in every condition, skipping ones already saved (resumable)."""
     results = []
@@ -207,7 +285,7 @@ def run_answers(
                     saved.fact_coverage, saved.path_hit, saved.honest = score(q, saved.answer)
                     results.append(saved)
                     continue
-            result = ask(q, condition, grepwise_command, model, runner)
+            result = ask(q, condition, grepwise_command, model, runner, projects_dir)
             path.write_text(json.dumps(asdict(result), indent=2) + "\n")
             results.append(result)
             on_result(result)
@@ -232,6 +310,7 @@ def summarize_answers(results: Sequence[AnswerResult]) -> dict[str, dict[str, fl
             "turns": _mean([float(r.turns) for r in rs]),
             "used_grepwise": _mean([float(_used(r, "mcp__grepwise")) for r in rs]),
             "used_web": _mean([float(_used(r, "Web")) for r in rs]),
+            "used_files": _mean([float(any(_used(r, t) for t in FILE_TOOLS)) for r in rs]),
             "errors": float(sum(1 for r in results if r.condition == condition and r.error)),
         }
     return out

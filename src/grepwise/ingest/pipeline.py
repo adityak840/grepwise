@@ -23,7 +23,7 @@ from grepwise.ingest.chunkers.docs import DOCS_EXTENSIONS, chunk_docs, docs_form
 from grepwise.ingest.chunkers.openapi import chunk_endpoint, render_operations
 from grepwise.ingest.embed import Embedder, Vector
 from grepwise.ingest.enrich import EnrichedChunk, docs_header, endpoint_header, enrich
-from grepwise.ingest.filters import SourceFile, collect_files
+from grepwise.ingest.filters import FilterResult, SourceFile, collect_files, read_text
 from grepwise.ingest.openapi import load_spec
 
 Fetcher = Callable[[str, str], AbstractContextManager[fetch.Checkout]]
@@ -36,7 +36,7 @@ EMBED_SAVE_EVERY = 64
 
 # Names and versions end up in citations (`name@version:path:Lx-Ly`), so no '@' or ':'.
 # '+' is allowed for local versions (PEP 440: '1.0+local').
-_SAFE_LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+-]*$")
+_SAFE_LABEL = re.compile(r"^@?[A-Za-z0-9][A-Za-z0-9._/+-]*$")  # '@' only for an npm scope
 
 
 class InvalidNameError(ValueError):
@@ -59,6 +59,7 @@ class IndexSummary:
     chunks_by_kind: Counter[str] = field(default_factory=Counter)
     embeddings_created: int = 0
     embeddings_reused: int = 0
+    subpath: str | None = None  # the package's folder, for a package in a monorepo
     embeddings_pending: int = 0  # left for the background worker (embed=False)
     seconds: float = 0.0
 
@@ -81,6 +82,7 @@ def _index(
     build: Callable[[IndexSummary], list[store.DocumentRecord]],
     ref: str | None = None,
     package: str | None = None,
+    ecosystem: str = "",
     embed: bool = True,
 ) -> IndexSummary:
     """Run `build`, then embed and store. On any error the source is marked `failed` and the
@@ -91,10 +93,14 @@ def _index(
     started = time.monotonic()
     summary = IndexSummary(name=name, version=version)
     source_id = store.begin_source(
-        conn, type_, name, url, version, subpath, ref=ref, package=package
+        conn, type_, name, url, version, subpath, ref=ref, package=package, ecosystem=ecosystem
     )
     try:
         documents = build(summary)
+        if summary.subpath and summary.subpath != subpath:  # found in the clone (monorepo)
+            conn.execute(
+                "UPDATE sources SET subpath = ? WHERE id = ?", (summary.subpath, source_id)
+            )
         all_chunks = [e for d in documents for e in d.chunks]
         summary.chunks_by_kind.update(e.chunk.kind for e in all_chunks)
         embeddings = store.cached_embeddings(
@@ -160,6 +166,28 @@ def build_documents(
     return documents
 
 
+REPO_DOCS = ("docs", "doc", "website/docs")
+
+
+def package_files(root: Path, folder: str) -> FilterResult:
+    """A monorepo package: its own folder, plus the repo's top-level README and docs folders
+    (paths stay relative to the repo root, so citations and links point at the right file)."""
+    result = collect_files(root, folder)
+    extra = [d for d in REPO_DOCS if (root / d).is_dir() and not folder.startswith(d)]
+    for docs in extra:
+        found = collect_files(root, docs)
+        result.kept += found.kept
+        result.skipped.update(found.skipped)
+    for readme in sorted(root.glob("README*")):
+        text, reason = read_text(readme)
+        if text is not None:
+            result.kept.append(SourceFile(path=readme.name, text=text))
+        else:
+            result.skipped[reason or "unreadable"] += 1
+    result.kept.sort(key=lambda f: f.path)
+    return result
+
+
 def index_repo(
     conn: Conn,
     embedder: Embedder,
@@ -169,6 +197,9 @@ def index_repo(
     name: str | None = None,
     version: str | None = None,
     package: str | None = None,
+    ecosystem: str = "",
+    subpath: str | None = None,
+    locate: Callable[[Path], str | None] | None = None,
     embed: bool = True,
     fetcher: Fetcher = fetch.checkout,
 ) -> IndexSummary:
@@ -183,13 +214,16 @@ def index_repo(
     def build(summary: IndexSummary) -> list[store.DocumentRecord]:
         with fetcher(repo.url, ref) as co:  # the temp folder is gone after this block
             summary.commit_sha = co.commit_sha
-            files = collect_files(co.path)
+            folder = subpath or (locate(co.path) if locate else None)
+            files = package_files(co.path, folder) if folder else collect_files(co.path)
+            summary.subpath = folder
         summary.files_kept, summary.skipped = len(files.kept), files.skipped
         return build_documents(source_name, files.kept)
 
     return _index(
         conn, embedder, type_="repo", name=source_name, url=repo.url, version=source_version,
-        subpath=None, build=build, ref=ref, package=package, embed=embed,
+        subpath=subpath, build=build, ref=ref, package=package,
+        ecosystem=ecosystem or ("pypi" if package else ""), embed=embed,
     )  # fmt: skip
 
 

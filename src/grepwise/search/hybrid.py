@@ -13,7 +13,7 @@ from typing import Any, Literal
 from grepwise.db.connection import Conn, json_list, transaction
 from grepwise.ingest.embed import Embedder
 from grepwise.ingest.keywords import query_terms
-from grepwise.search.citations import format_citation
+from grepwise.search.citations import format_citation, split_ref
 from grepwise.search.links import link_for
 from grepwise.search.vectors import vector_search
 
@@ -81,7 +81,7 @@ def parse_sources(sources: Sequence[str] | None) -> list[tuple[str, str]] | None
     """['pallets/itsdangerous', 'petstore@1.0.27'] -> [(name, version)]; '' = any version."""
     if not sources:
         return None
-    return [(name, version) for name, _, version in (s.partition("@") for s in sources)]
+    return [split_ref(s) for s in sources]
 
 
 def matching_sources(
