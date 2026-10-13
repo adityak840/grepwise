@@ -46,7 +46,12 @@ def ctx(
     monkeypatch: pytest.MonkeyPatch,
 ) -> ToolContext:  # fmt: skip
     """docslib 2.0 'lives' at example/docs_repo, tag v2.0 (really the docs fixture)."""
-    pypi = lambda url: {"info": {"project_urls": {"Source": DOCS_URL}}}  # noqa: E731
+
+    def pypi(url: str) -> dict[str, Any] | None:  # only docslib exists, at 2.0
+        if "pypi.org/pypi/docslib/" not in url:
+            return None
+        return {"info": {"project_urls": {"Source": DOCS_URL}, "version": "2.0"}}
+
     monkeypatch.setattr(
         workspace, "Resolver",
         lambda c, **kw: Resolver(c, known={}, http_get=pypi, tags=lambda _: ["v2.0"], **kw),
@@ -272,7 +277,7 @@ def test_add_hints_only_name_what_would_work(
         return str(out["notes"][0])
 
     assert "`grepwise add requests`" in note("requests")
-    assert "`grepwise add requests==2.0`" in note("requests@2.0")
+    assert "links no GitHub repo" in note("requests@2.0")  # on PyPI: tried, and says why
     for npm in ("recharts", "playwright-core@1.61.0"):
         assert "PyPI has no" in note(npm) and "grepwise add https://github.com/" in note(npm)
         assert "`grepwise add recharts`" not in note(npm)
@@ -299,7 +304,10 @@ def test_naming_the_locked_version_indexes_it_too(ctx: ToolContext) -> None:
     assert out["results"] and out["results"][0]["source"] == "docslib@2.0"
     assert "was just indexed" in out["notes"][0]
     other = call_tool(ctx, "search", {"query": "x", "libraries": ["docslib@1.0"]})
-    assert other["results"] == [] and "isn't indexed" in other["notes"][0]
+    assert other["results"] == []  # on PyPI, but its repo has no tag for 1.0: says so
+    assert (
+        "Couldn't index docslib 1.0" in other["notes"][0] and "closest: v2.0" in other["notes"][0]
+    )
 
 
 def test_a_plain_name_finds_an_owner_repo_source(ctx: ToolContext, indexed: Conn) -> None:

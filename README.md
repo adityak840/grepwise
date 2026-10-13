@@ -3,7 +3,7 @@
 An MCP server that gives your coding assistant the real source code and docs of your project's dependencies, at the exact versions in your lockfile, with a citation and a link for every result.
 
 - **Exact versions:** Python (`uv.lock`, `poetry.lock`, pinned requirements, `.venv`) and JavaScript/TypeScript (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `node_modules`).
-- **No setup per library:** a dependency is indexed the first time it's searched.
+- **No setup per library:** a dependency is indexed the first time it's searched; so is any other PyPI or npm package you ask about by name (its latest release, or the version you name).
 - **Code and docs:** code split by function and class, docs (Markdown, MDX, reStructuredText) by heading.
 - **Local:** SQLite and a local embedding model. No Docker, no API keys.
 

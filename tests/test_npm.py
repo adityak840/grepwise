@@ -285,13 +285,19 @@ def ctx(conn: Conn, embedder: FakeEmbedder, mixed: Path, tmp_path: Path,
                                    "  return generateCategoricalChart(props);\n}\n",
     })  # fmt: skip
     registries: dict[str, HttpGet] = {
-        "npm": FakeNpm({"/recharts/2.15.0": {"repository": "github:recharts/recharts"}}),
+        "npm": FakeNpm(
+            {
+                "/recharts/2.15.0": {"repository": "github:recharts/recharts"},
+                "/zod/latest": {"version": "3.23.8"},
+                "/zod/3.23.8": {"repository": "colinhacks/zod"},
+            }
+        ),
         "pypi": lambda url: None,  # PyPI's recharts 0.1.0 doesn't exist here
     }
 
     def resolver(c: Conn, ecosystem: str = "pypi", **kw: Any) -> Resolver:
         return Resolver(c, ecosystem=ecosystem, known={}, http_get=registries[ecosystem],
-                        tags=lambda _: ["v2.15.0"], **kw)  # fmt: skip
+                        tags=lambda _: ["v2.15.0", "v3.23.8"], **kw)  # fmt: skip
 
     monkeypatch.setattr(workspace, "Resolver", resolver)
     real = index_repo
@@ -325,9 +331,27 @@ def test_a_js_dependency_is_indexed_on_first_search(ctx: ToolContext) -> None:
     assert any("Couldn't index recharts 0.1.0" in n for n in both["notes"])
 
 
+def test_a_library_the_project_doesnt_use_is_indexed_at_its_latest_release(
+    ctx: ToolContext,
+) -> None:
+    out = call_tool(ctx, "search", {"query": "LineChart", "libraries": ["zod"]})
+    assert out["results"] and out["results"][0]["source"] == "zod@3.23.8"
+    assert any("latest release (3.23.8, npm)" in n for n in out["notes"])
+    row = ctx.conn.execute("SELECT ecosystem FROM sources WHERE name = 'zod'").fetchone()
+    assert row == ("npm",)
+    again = call_tool(ctx, "search", {"query": "LineChart", "libraries": ["zod"]})
+    assert again["results"] and not any("latest" in n for n in again["notes"])  # reused
+
+
 def test_hints_name_the_projects_registries(ctx: ToolContext) -> None:
-    out = call_tool(ctx, "search", {"query": "x", "libraries": ["zod"]})
-    assert "PyPI or npm has no zod" in out["notes"][0]
+    out = call_tool(ctx, "search", {"query": "x", "libraries": ["yup"]})
+    assert "PyPI or npm has no yup" in out["notes"][0]
+
+
+def test_a_likely_typo_asks_instead_of_fetching(ctx: ToolContext) -> None:
+    out = call_tool(ctx, "search", {"query": "x", "libraries": ["rechart"]})
+    assert out["results"] == [] and "Did you mean recharts" in out["notes"][0]
+    assert ctx.conn.execute("SELECT count(*) FROM sources").fetchone() == (0,)
 
 
 def test_types_packages_dont_match_a_plain_name(ctx: ToolContext) -> None:

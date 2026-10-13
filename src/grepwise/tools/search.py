@@ -25,9 +25,10 @@ class SearchInput(BaseModel):
     libraries: list[str] | None = Field(
         default=None,
         description="Library names, e.g. ['typer'] or ['recharts']: the version this project "
-        "locks, Python or JavaScript (indexed on the spot if needed). Also 'name@version', "
-        "'npm:name' when a name exists in both, or any indexed source name. Leave out to "
-        "search all of the project's indexed libraries.",
+        "locks, Python or JavaScript. Any other PyPI or npm package works too (its latest "
+        "release). Indexed on the spot if needed. Also 'name@version', 'npm:name' when a name "
+        "exists in both, or any indexed source name. Leave out to search all of the "
+        "project's indexed libraries.",
     )
     kind: Literal["code", "docs", "api"] | None = Field(
         default=None, description="Only code, only docs, or only API endpoints."

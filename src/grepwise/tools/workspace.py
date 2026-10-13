@@ -115,9 +115,11 @@ def lookup(
             # The version can also be the git tag ('typer@v0.27.2').
             where = f"{_NAME_MATCH} AND {in_eco} AND (version = :version OR ref = :version)"
             found = find_sources(ctx.conn, where, params)
+            if not found and index_missing:
+                found = _index_named(ctx, project, eco, name, version, out.notes)
             if found:
                 out.sources += found
-            else:
+            elif not out.notes or name not in out.notes[-1]:
                 out.notes.append(
                     f"{raw} isn't indexed. {add_hint(ctx, project, eco, name, version)}"
                 )
@@ -142,10 +144,18 @@ def lookup(
         if by_name:
             out.sources += by_name
         elif not deps:
-            where = "this project's dependencies or " if project else ""
             known = [r[0] for r in ctx.conn.execute("SELECT DISTINCT name FROM sources")]
             known += [d.name for d in project.dependencies] if project else []
-            close = difflib.get_close_matches(name, known, n=3)
+            close = [c for c in difflib.get_close_matches(name, known, n=3) if c != name]
+            # A close known name is likely a typo: ask rather than fetch a different package.
+            if not close and index_missing:
+                found = _index_named(ctx, project, eco, name, "", out.notes)
+                if found:
+                    out.sources += found
+                    continue
+                if out.notes and name in out.notes[-1]:
+                    continue  # it exists but couldn't be indexed: that note says why
+            where = "this project's dependencies or " if project else ""
             hint = f" Did you mean {', '.join(close)}?" if close else ""
             out.notes.append(
                 f"{name!r} isn't in {where}the index.{hint} "
@@ -204,6 +214,47 @@ def add_spec(eco: str, name: str, version: str = "") -> str:
     if eco == "pypi":
         return f"{name}=={version}" if version else name
     return f"{eco}:{name}@{version}" if version else f"{eco}:{name}"
+
+
+def _index_named(
+    ctx: ToolContext,
+    project: Project | None,
+    eco: str | None,
+    name: str,
+    version: str,
+    notes: list[str],
+) -> list[Source]:
+    """Index a library the project doesn't depend on, because it was asked about by name: the
+    named version, else the latest release. The registry: the named one, else the project's
+    ecosystems, else PyPI then npm; the first that has the package wins."""
+    if "/" in name and not name.startswith("@"):
+        return []  # owner/repo: not a package name
+    if eco:
+        order = [eco]
+    else:
+        mine = list(dict.fromkeys(r.ecosystem for r in project.roots)) if project else []
+        order = mine + [e.name for e in ecosystems() if e.name not in mine]
+    for e in order:
+        resolver = Resolver(ctx.conn, ecosystem=e)
+        try:
+            if version and not resolver.on_registry(name, version):
+                continue
+            chosen = version or resolver.latest_version(name)
+        except ResolveError:
+            continue  # not in this registry (or it can't be reached)
+        if not chosen:
+            continue
+        dep = Dependency(get_ecosystem(e).normalize(name), chosen, False,
+                         "named" if version else "latest", True, e)  # fmt: skip
+        found = dependency_sources(ctx.conn, dep) or _index_dependency(ctx, dep, notes)
+        if found and not version:
+            notes.append(
+                f"{dep.name} isn't a dependency of this project, so its latest release "
+                f"({chosen}, {get_ecosystem(e).registry}) was used; name a version as "
+                f"'{dep.name}@<version>' for another."
+            )
+        return found
+    return []
 
 
 def _index_dependency(ctx: ToolContext, dep: Dependency, notes: list[str]) -> list[Source]:
